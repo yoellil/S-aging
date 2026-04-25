@@ -83,20 +83,6 @@ backend/
 
 ---
 
-## Research team
-
-| Name | Role |
-|---|---|
-| Jimiel D. Balitayo | BS Computer Science |
-| Darryl B. Baranda | BS Computer Science |
-| Yoel Dwayne G. Reyes | BS Computer Science |
-| Justine Gabriel P. Rodriguez | BS Computer Science |
-
-**Thesis adviser:** Mr. Anthony D. Aquino  
-**Institution:** FEU Institute of Technology · March 2026
-
----
-
 ## Evaluation
 
 The system is evaluated against:
