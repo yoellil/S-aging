@@ -45,10 +45,25 @@ export default function AuthPage({ onAuth }) {
         switchMode("login");
 
       } else {
-        // Sign in directly via Supabase Auth
+        // Sign in via Supabase Auth
         const { data, error: authErr } = await supabase.auth.signInWithPassword({ email, password });
         if (authErr) { setError(authErr.message); setLoading(false); return; }
-        onAuth(data.session, data.user);
+
+        // Also create session in auth-service to get a session token
+        let authToken = null;
+        try {
+          const loginRes = await fetch(`${AUTH_URL}/login`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email, password }),
+          });
+          const loginData = await loginRes.json();
+          if (loginData.success) authToken = loginData.data?.token ?? null;
+        } catch {
+          // Auth-service offline — proceed without session token
+        }
+
+        onAuth(data.session, data.user, authToken);
       }
     } catch {
       setError("Unable to reach the server. Make sure the auth-service is running on port 3001.");

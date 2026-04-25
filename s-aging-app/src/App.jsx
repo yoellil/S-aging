@@ -1,15 +1,17 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { motion, AnimatePresence, useMotionValue, useSpring, useInView } from "motion/react";
 import {
-  Crosshair, BrainCircuit, Gauge, Dna, BadgeCheck, TreePalm,
-  Upload, X, Play, Pause, RotateCcw,
-  House, Microscope, Activity, BookOpen,
-  FlaskConical, Cpu, Zap, ArrowRight, Loader, LogOut,
+  ScanSearch, Waypoints, Thermometer, Biohazard, ShieldCheck, Sprout,
+  CloudUpload, X, Play, Pause, RefreshCcw,
+  Hexagon, ScanEye, Orbit, Scroll,
+  TestTubes, Sparkles, Atom, MoveRight, LoaderCircle, DoorOpen,
+  Fingerprint,
 } from "lucide-react";
 import { detectDisease, warmupSession } from "./detection";
-import { streamSimulation } from "./api";
+import { streamSimulation, authLogout } from "./api";
 import { supabase } from "./utils/supabase";
 import AuthPage from "./AuthPage";
+import ProfilePage from "./ProfilePage";
 
 // ── CONSTANTS ────────────────────────────────────────────────────────────────
 const COLORS = {
@@ -297,7 +299,7 @@ function HomePage({ onNavigate }) {
         >
           <Magnet strength={4}>
             <button className="btn-primary" onClick={() => onNavigate("upload")}>
-              Try the simulation <ArrowRight size={14} style={{ display: "inline", verticalAlign: "middle", marginLeft: 4 }} />
+              Try the simulation <MoveRight size={14} style={{ display: "inline", verticalAlign: "middle", marginLeft: 4 }} />
             </button>
           </Magnet>
           <Magnet strength={4}>
@@ -316,9 +318,9 @@ function HomePage({ onNavigate }) {
         transition={{ delay: 0.45, duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
       >
         {[
-          { count: 82, suffix: "K+", label: "Mindanao hectares monitored", icon: <TreePalm size={18} /> },
-          { count: 16000, suffix: "", label: "SCA simulation cells", icon: <BrainCircuit size={18} /> },
-          { count: 30, suffix: " mo", label: "Disease progression modeled", icon: <Activity size={18} /> },
+          { count: 82, suffix: "K+", label: "Mindanao hectares monitored", icon: <Sprout size={18} /> },
+          { count: 16000, suffix: "", label: "SCA simulation cells", icon: <Waypoints size={18} /> },
+          { count: 30, suffix: " mo", label: "Disease progression modeled", icon: <Orbit size={18} /> },
         ].map(({ count, suffix, label, icon }) => (
           <div className="stat-card" key={label}>
             <div className="stat-icon">{icon}</div>
@@ -340,37 +342,37 @@ function HomePage({ onNavigate }) {
           {[
             {
               color: COLORS.green50, iconColor: COLORS.green600,
-              icon: <Crosshair size={20} />,
+              icon: <ScanSearch size={20} />,
               title: "Real-time detection",
               desc: "Upload a banana leaf image and get instant disease identification with pixel-level segmentation masks.",
             },
             {
               color: COLORS.teal50, iconColor: COLORS.teal600,
-              icon: <BrainCircuit size={20} />,
+              icon: <Waypoints size={20} />,
               title: "Cellular Automata engine",
               desc: "8-cell Moore neighborhood SCA simulates organic, pathologically accurate disease spread patterns.",
             },
             {
               color: COLORS.amber50, iconColor: COLORS.amber400,
-              icon: <Gauge size={20} />,
+              icon: <Thermometer size={20} />,
               title: "Environmental variables",
               desc: "Adjust temperature, humidity, and plant density to explore how conditions affect disease progression speed.",
             },
             {
               color: COLORS.green50, iconColor: COLORS.green600,
-              icon: <Dna size={20} />,
+              icon: <Biohazard size={20} />,
               title: "Two disease models",
               desc: "Marginal-lateral spread for Fusarium Wilt TR4 (margin-first chlorosis) and longitudinal σ-β model for Black Sigatoka.",
             },
             {
               color: COLORS.teal50, iconColor: COLORS.teal600,
-              icon: <BadgeCheck size={20} />,
+              icon: <ShieldCheck size={20} />,
               title: "ISO-25010 evaluated",
               desc: "System quality assessed across functionality, performance, interaction, maintainability, and security.",
             },
             {
               color: COLORS.amber50, iconColor: COLORS.amber400,
-              icon: <TreePalm size={20} />,
+              icon: <Sprout size={20} />,
               title: "Philippine banana focus",
               desc: "Targets Cavendish (Musa acuminata) — the primary export variety from Mindanao's 82,000+ hectares.",
             },
@@ -401,11 +403,11 @@ function HomePage({ onNavigate }) {
           </FadeIn>
           <div className="pipeline-steps">
             {[
-              { n: "01", t: "Upload", d: "Banana leaf photo via web app", icon: <Upload size={16} /> },
-              { n: "02", t: "CLAHE + GC", d: "Contrast & gamma preprocessing", icon: <Cpu size={16} /> },
-              { n: "03", t: "YOLOv11-seg", d: "Pixel-level disease mask extraction", icon: <Crosshair size={16} /> },
-              { n: "04", t: "SCA Engine", d: "Disease spread simulation on UV grid", icon: <BrainCircuit size={16} /> },
-              { n: "05", t: "3D Viewer", d: "Interactive temporal visualization", icon: <Zap size={16} /> },
+              { n: "01", t: "Upload", d: "Banana leaf photo via web app", icon: <CloudUpload size={16} /> },
+              { n: "02", t: "CLAHE + GC", d: "Contrast & gamma preprocessing", icon: <Sparkles size={16} /> },
+              { n: "03", t: "YOLOv11-seg", d: "Pixel-level disease mask extraction", icon: <ScanSearch size={16} /> },
+              { n: "04", t: "SCA Engine", d: "Disease spread simulation on UV grid", icon: <Waypoints size={16} /> },
+              { n: "05", t: "3D Viewer", d: "Interactive temporal visualization", icon: <Atom size={16} /> },
             ].map(({ n, t, d, icon }, i) => (
               <motion.div
                 className="pipeline-step"
@@ -612,7 +614,7 @@ function UploadPage({ onNavigate, setSimConfig }) {
             onClick={() => fileInputRef.current?.click()}
           >
             <div className="upload-icon">
-              <Upload size={24} color={COLORS.green400} strokeWidth={1.5} />
+              <CloudUpload size={24} color={COLORS.green400} strokeWidth={1.5} />
             </div>
             <div className="upload-title">Tap to upload or take a photo</div>
             <div className="upload-hint">
@@ -1024,7 +1026,7 @@ function SimulationPage({ config }) {
                       );
                     }, 50);
                   }}>
-                    <RotateCcw size={14} />
+                    <RefreshCcw size={14} />
                   </button>
                 </div>
               </div>
@@ -1287,6 +1289,7 @@ export default function SAgingApp() {
   const [simConfig, setSimConfig] = useState({ disease: "black_sigatoka", temp: 26, rh: 85, density: "medium", detections: null, maskGrid: null });
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [session, setSession] = useState(null);
+  const [sessionToken, setSessionToken] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
 
   // Check for existing session on mount
@@ -1313,11 +1316,11 @@ export default function SAgingApp() {
 
   if (authLoading) return (
     <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#F8F7F4" }}>
-      <Loader size={24} style={{ animation: "spin 1s linear infinite", color: "#639922" }} />
+      <LoaderCircle size={24} style={{ animation: "spin 1s linear infinite", color: "#639922" }} />
     </div>
   );
 
-  if (!session) return <AuthPage onAuth={(s) => setSession(s)} />;
+  if (!session) return <AuthPage onAuth={(s, _user, token) => { setSession(s); if (token) setSessionToken(token); }} />;
 
   return (
     <div className="saging-app">
@@ -1334,10 +1337,11 @@ export default function SAgingApp() {
 
         <div className="nav-links">
           {[
-            ["home", "Home", <House size={14} />],
-            ["upload", "Analyze", <Microscope size={14} />],
-            ["simulation", "Simulate", <Activity size={14} />],
-            ["about", "About", <BookOpen size={14} />],
+            ["home", "Home", <Hexagon size={14} />],
+            ["upload", "Analyze", <ScanEye size={14} />],
+            ["simulation", "Simulate", <Orbit size={14} />],
+            ["about", "About", <Scroll size={14} />],
+            ["profile", "Profile", <Fingerprint size={14} />],
           ].map(([p, label, icon]) => (
             <button key={p} className={`nav-link ${page === p ? "active" : ""}`} onClick={() => navigate(p)}>
               <span className="nav-link-icon">{icon}</span>
@@ -1347,12 +1351,18 @@ export default function SAgingApp() {
         </div>
 
         <button className="nav-cta" onClick={() => navigate("upload")}>
-          <Zap size={13} style={{ marginRight: 5, verticalAlign: "middle" }} />
+          <Atom size={13} style={{ marginRight: 5, verticalAlign: "middle" }} />
           Start simulation
         </button>
 
         <button
-          onClick={() => supabase.auth.signOut()}
+          onClick={async () => {
+            if (sessionToken) {
+              try { await authLogout(sessionToken); } catch { /* best-effort */ }
+            }
+            setSessionToken(null);
+            await supabase.auth.signOut();
+          }}
           title={`Logged in as ${session?.user?.email}`}
           style={{
             background: "transparent", border: "1px solid rgba(255,255,255,0.25)",
@@ -1361,13 +1371,13 @@ export default function SAgingApp() {
             alignItems: "center", gap: 5, fontSize: 12,
           }}
         >
-          <LogOut size={13} />
+          <DoorOpen size={13} />
           Log out
         </button>
 
         {/* Mobile hamburger */}
         <button className="nav-hamburger" onClick={() => setMobileMenuOpen(o => !o)}>
-          {mobileMenuOpen ? <X size={20} /> : <FlaskConical size={20} />}
+          {mobileMenuOpen ? <X size={20} /> : <TestTubes size={20} />}
         </button>
       </nav>
 
@@ -1375,6 +1385,7 @@ export default function SAgingApp() {
       {page === "upload" && <UploadPage onNavigate={navigate} setSimConfig={setSimConfig} />}
       {page === "simulation" && <SimulationPage config={simConfig} />}
       {page === "about" && <AboutPage />}
+      {page === "profile" && <ProfilePage session={session} sessionToken={sessionToken} />}
 
       <footer className="footer">
         <span>S-Aging · FEU Institute of Technology · 2026</span>

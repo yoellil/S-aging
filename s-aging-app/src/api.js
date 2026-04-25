@@ -5,6 +5,10 @@
  * NDJSON line (one per simulated month, 0-30).
  */
 
+const AUTH_URL = "http://localhost:3001";
+
+// ── Simulation ──────────────────────────────────────────────────────────────
+
 /**
  * @param {object}   params           SimRequest body
  * @param {function} onFrame          Called with each parsed frame object
@@ -66,4 +70,75 @@ export async function checkBackend() {
   } catch {
     return false;
   }
+}
+
+// ── Auth-service helpers ────────────────────────────────────────────────────
+
+function _authHeaders(sessionToken) {
+  return {
+    "Content-Type": "application/json",
+    ...(sessionToken ? { "Authorization": `Bearer ${sessionToken}` } : {}),
+  };
+}
+
+async function _authFetch(method, path, sessionToken, body = null) {
+  const opts = {
+    method,
+    headers: _authHeaders(sessionToken),
+  };
+  if (body !== null) opts.body = JSON.stringify(body);
+  const res = await fetch(`${AUTH_URL}${path}`, opts);
+  return res.json();
+}
+
+// ── Logout ──────────────────────────────────────────────────────────────────
+
+export async function authLogout(sessionToken) {
+  return _authFetch("POST", "/api/auth/logout", sessionToken);
+}
+
+// ── Profile ─────────────────────────────────────────────────────────────────
+
+export async function getProfile(sessionToken) {
+  return _authFetch("GET", "/api/profile", sessionToken);
+}
+
+export async function updateProfile(sessionToken, data) {
+  return _authFetch("PUT", "/api/profile", sessionToken, data);
+}
+
+export async function updateUsername(sessionToken, newUsername) {
+  return _authFetch("PUT", "/api/profile/username", sessionToken, { new_username: newUsername });
+}
+
+export async function updatePassword(sessionToken, currentPassword, newPassword) {
+  return _authFetch("PUT", "/api/profile/password", sessionToken, {
+    current_password: currentPassword,
+    new_password: newPassword,
+  });
+}
+
+export async function uploadProfilePicture(sessionToken, file) {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const res = await fetch(`${AUTH_URL}/api/profile/picture`, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${sessionToken}`,
+      // Do NOT set Content-Type — browser sets multipart boundary automatically
+    },
+    body: formData,
+  });
+  return res.json();
+}
+
+export async function deleteProfilePicture(sessionToken) {
+  return _authFetch("DELETE", "/api/profile/picture", sessionToken);
+}
+
+// ── Activity logs ───────────────────────────────────────────────────────────
+
+export async function getActivityLogs(sessionToken, limit = 10, offset = 0) {
+  return _authFetch("GET", `/api/logs?limit=${limit}&offset=${offset}`, sessionToken);
 }

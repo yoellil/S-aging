@@ -25,5 +25,10 @@ npm-debug.log*
 *.suo
 *.sw?
 
+# Environment / Secrets
+.env
+.env.local
+.env.*.local
+
 # OS
 Thumbs.db
