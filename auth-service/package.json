@@ -1,0 +1,24 @@
+{
+  "name": "s-aging-auth-service",
+  "version": "1.0.0",
+  "description": "Authentication and activity logging service for S-Aging",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "setup-db": "node setup_db.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.104.1",
+    "bcryptjs": "^3.0.3",
+    "cors": "^2.8.6",
+    "dotenv": "^16.6.1",
+    "express": "^5.2.1",
+    "pg": "^8.20.0",
+    "uuid": "^11.1.0"
+  }
+}
