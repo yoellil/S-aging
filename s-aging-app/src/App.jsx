@@ -4,10 +4,12 @@ import {
   Crosshair, BrainCircuit, Gauge, Dna, BadgeCheck, TreePalm,
   Upload, X, Play, Pause, RotateCcw,
   House, Microscope, Activity, BookOpen,
-  FlaskConical, Cpu, Zap, ArrowRight, Loader,
+  FlaskConical, Cpu, Zap, ArrowRight, Loader, LogOut,
 } from "lucide-react";
 import { detectDisease, warmupSession } from "./detection";
 import { streamSimulation } from "./api";
+import { supabase } from "./utils/supabase";
+import AuthPage from "./AuthPage";
 
 // ── CONSTANTS ────────────────────────────────────────────────────────────────
 const COLORS = {
@@ -135,8 +137,8 @@ function CyclingWord({ words, interval = 2200 }) {
           key={idx}
           className="cycling-word"
           initial={{ y: 14, opacity: 0, filter: "blur(6px)" }}
-          animate={{ y: 0,  opacity: 1, filter: "blur(0px)" }}
-          exit={{   y: -14, opacity: 0, filter: "blur(6px)" }}
+          animate={{ y: 0, opacity: 1, filter: "blur(0px)" }}
+          exit={{ y: -14, opacity: 0, filter: "blur(6px)" }}
           transition={{ duration: 0.38, ease: [0.16, 1, 0.3, 1] }}
         >
           {words[idx]}
@@ -505,12 +507,12 @@ function UploadPage({ onNavigate, setSimConfig }) {
     // FW:  Topt=27.5°C (±5°C peak band), RH_OPT=85% (MDPI Agronomy 2021)
     // BS:  Topt=27.2°C (±2°C peak band), RH_OPT=90% — "favoured by 90–100% RH"
     //      (Maxapress 2024 Sigatoka overview)
-    const tOptimal   = isFW ? (temp >= 24 && temp <= 32) : (temp >= 25 && temp <= 29);
-    const rhOptimal  = isFW ? rh >= 80 : rh >= 90;
-    const tModerate  = isFW ? (temp >= 20 && temp <= 35) : (temp >= 16.6 && temp <= 30.3);
+    const tOptimal = isFW ? (temp >= 24 && temp <= 32) : (temp >= 25 && temp <= 29);
+    const rhOptimal = isFW ? rh >= 80 : rh >= 90;
+    const tModerate = isFW ? (temp >= 20 && temp <= 35) : (temp >= 16.6 && temp <= 30.3);
     const rhModerate = isFW ? rh >= 65 : rh >= 70;
-    if (tOptimal && rhOptimal)   return { label: "Optimal — peak disease spread",  color: COLORS.red400   };
-    if (tModerate && rhModerate) return { label: "Moderate — gradual spread",       color: COLORS.amber400 };
+    if (tOptimal && rhOptimal) return { label: "Optimal — peak disease spread", color: COLORS.red400 };
+    if (tModerate && rhModerate) return { label: "Moderate — gradual spread", color: COLORS.amber400 };
     return { label: "Unfavorable — minimal spread", color: COLORS.green400 };
   };
 
@@ -680,7 +682,7 @@ function UploadPage({ onNavigate, setSimConfig }) {
         <div className="env-panel">
           <div className="env-panel-title">
             <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke={COLORS.green400} strokeWidth="1.5">
-              <circle cx="10" cy="10" r="7"/><path d="M10 6v4l3 2"/>
+              <circle cx="10" cy="10" r="7" /><path d="M10 6v4l3 2" />
             </svg>
             Environmental parameters
           </div>
@@ -730,7 +732,7 @@ function UploadPage({ onNavigate, setSimConfig }) {
               disease: selected, temp, rh, density,
               detections: detections ?? null,
               maskGrid: maskGrid ?? null,
-              imgWidth:  imgRef.current?.naturalWidth  ?? null,
+              imgWidth: imgRef.current?.naturalWidth ?? null,
               imgHeight: imgRef.current?.naturalHeight ?? null,
               imageData,
             });
@@ -749,19 +751,19 @@ function UploadPage({ onNavigate, setSimConfig }) {
 // ══════════════════════════════════════════════════════════════════════════════
 function SimulationPage({ config }) {
   const { disease = "black_sigatoka", temp = 26, rh = 85, density = "medium",
-          detections = null, maskGrid = null, imgWidth = null, imgHeight = null,
-          imageData = null } = config || {};
+    detections = null, maskGrid = null, imgWidth = null, imgHeight = null,
+    imageData = null } = config || {};
 
   // Streamed frames from FastAPI backend  (one per simulated month, 0-30)
-  const [frames, setFrames]       = useState([]);
-  const [simState, setSimState]   = useState("loading"); // loading | complete | error
-  const [errorMsg, setErrorMsg]   = useState(null);
-  const [timeStep, setTimeStep]   = useState(0);        // index into frames[]
-  const [playing, setPlaying]     = useState(false);
+  const [frames, setFrames] = useState([]);
+  const [simState, setSimState] = useState("loading"); // loading | complete | error
+  const [errorMsg, setErrorMsg] = useState(null);
+  const [timeStep, setTimeStep] = useState(0);        // index into frames[]
+  const [playing, setPlaying] = useState(false);
   const [activeTab, setActiveTab] = useState("leaf");
 
-  const framesRef    = useRef([]);
-  const playRef      = useRef(null);
+  const framesRef = useRef([]);
+  const playRef = useRef(null);
   const cancelledRef = useRef(false);
 
   const isFW = disease === "fusarium_wilt";
@@ -808,20 +810,20 @@ function SimulationPage({ config }) {
 
   // ── Derived display values from the current frame ─────────────────────────
   const currentFrame = frames[timeStep] ?? frames[frames.length - 1] ?? null;
-  const month      = currentFrame?.month ?? 0;
-  const stats      = currentFrame?.stats ?? { infected_pct: 0, necrotic_pct: 0, healthy_pct: 100 };
-  const envInfo    = currentFrame?.env   ?? {};
+  const month = currentFrame?.month ?? 0;
+  const stats = currentFrame?.stats ?? { infected_pct: 0, necrotic_pct: 0, healthy_pct: 100 };
+  const envInfo = currentFrame?.env ?? {};
 
-  const infPct     = stats.infected_pct.toFixed(1);
-  const necPct     = stats.necrotic_pct.toFixed(1);
+  const infPct = stats.infected_pct.toFixed(1);
+  const necPct = stats.necrotic_pct.toFixed(1);
   const healthyPct = Math.max(0, stats.healthy_pct).toFixed(1);
 
-  const T_OPT  = envInfo.T_OPT  ?? (isFW ? 27.5 : 27.2);
+  const T_OPT = envInfo.T_OPT ?? (isFW ? 27.5 : 27.2);
   const RH_MIN = envInfo.RH_MIN ?? (isFW ? 75 : 70);
-  const CT     = envInfo.CT     ?? 0;
-  const CRH    = envInfo.CRH    ?? 0;
-  const E_ENV  = envInfo.E_ENV  ?? 0;
-  const pBase  = envInfo.p_base ?? 0;
+  const CT = envInfo.CT ?? 0;
+  const CRH = envInfo.CRH ?? 0;
+  const E_ENV = envInfo.E_ENV ?? 0;
+  const pBase = envInfo.p_base ?? 0;
 
   // Sparkline histories derived from all streamed frames
   const infHistory = useMemo(() => frames.map(f => f.stats.infected_pct), [frames]);
@@ -832,20 +834,20 @@ function SimulationPage({ config }) {
   // (Springer EJPP 2024, doi:10.1007/s10658-024-02917-x) — six quantitative
   // severity ranges: 0–5 % / 5–13 % / 13–23 % / 23–40 % / 40–65 % / 65–100 %
   const BS_STAGES = [
-    { num: "I",   name: "Initial Specks",    range: [0,3],   desc: "SAD Level 1 (0–5 % leaf area). Tiny reddish-brown flecks visible on the abaxial (underside) surface — ascospore germination at epidermal level. Optimal RH ≥90 % accelerates onset (Maxapress 2024)." },
-    { num: "II",  name: "Pale Streaks",      range: [3,7],   desc: "SAD Level 2 (5–13 % leaf area). Dark-brown streaks 2–5 mm parallel to leaf veins, most prominent abaxially. Leaf wetness of 48 h at Topt 27.2 °C enables full ascospore production." },
-    { num: "III", name: "Brown Lesions",     range: [7,12],  desc: "SAD Level 3 (13–23 % leaf area). Streaks lengthen to 20–30 mm, darkening to brown with expanding yellow chlorotic halos. Lesions now visible on adaxial (upper) surface." },
-    { num: "IV",  name: "Coalescing Lesions",range: [12,18], desc: "SAD Level 4 (23–40 % leaf area). Adjacent lesions merge; sunken grey-white necrotic centres form with distinct dark border and yellow halo. Sporulation intensifies." },
-    { num: "V",   name: "Necrotic Patches",  range: [18,24], desc: "SAD Level 5 (40–65 % leaf area). Large coalesced necrotic patches with fading grey centres and black margin. Photosynthetic capacity severely compromised; yield losses begin." },
-    { num: "VI",  name: "Necrotic Collapse", range: [24,31], desc: "SAD Level 6 (65–100 % leaf area). Systemic necrosis — leaf tissue collapses and desiccates. Up to 90 % yield loss reported (Maxapress 2024). Functional photosynthetic area effectively lost." },
+    { num: "I", name: "Initial Specks", range: [0, 3], desc: "SAD Level 1 (0–5 % leaf area). Tiny reddish-brown flecks visible on the abaxial (underside) surface — ascospore germination at epidermal level. Optimal RH ≥90 % accelerates onset (Maxapress 2024)." },
+    { num: "II", name: "Pale Streaks", range: [3, 7], desc: "SAD Level 2 (5–13 % leaf area). Dark-brown streaks 2–5 mm parallel to leaf veins, most prominent abaxially. Leaf wetness of 48 h at Topt 27.2 °C enables full ascospore production." },
+    { num: "III", name: "Brown Lesions", range: [7, 12], desc: "SAD Level 3 (13–23 % leaf area). Streaks lengthen to 20–30 mm, darkening to brown with expanding yellow chlorotic halos. Lesions now visible on adaxial (upper) surface." },
+    { num: "IV", name: "Coalescing Lesions", range: [12, 18], desc: "SAD Level 4 (23–40 % leaf area). Adjacent lesions merge; sunken grey-white necrotic centres form with distinct dark border and yellow halo. Sporulation intensifies." },
+    { num: "V", name: "Necrotic Patches", range: [18, 24], desc: "SAD Level 5 (40–65 % leaf area). Large coalesced necrotic patches with fading grey centres and black margin. Photosynthetic capacity severely compromised; yield losses begin." },
+    { num: "VI", name: "Necrotic Collapse", range: [24, 31], desc: "SAD Level 6 (65–100 % leaf area). Systemic necrosis — leaf tissue collapses and desiccates. Up to 90 % yield loss reported (Maxapress 2024). Functional photosynthetic area effectively lost." },
   ];
   // FW phases grounded in: MDPI Agronomy 2021 (Venezuelan FW agro-environmental
   // factors) and Frontiers Plant Sci 2019 (FW epidemiology)
   const FW_PHASES = [
-    { num: "I",   name: "Root Invasion",      range: [0,5],   desc: "Foc TR4 chlamydospores germinate in root exudates, penetrate lateral roots, and colonise xylem vessels. No visible foliar symptoms yet; internal vascular discolouration begins in pseudostem." },
-    { num: "II",  name: "Marginal Chlorosis", range: [5,12],  desc: "Yellowing appears FIRST at the MARGINS of the oldest, outermost leaves — the tissues furthest from the xylem supply. Incubation: 2–5 months after root infection (Agronomy 2021). Leaf margins turn bright yellow then orange-brown." },
-    { num: "III", name: "Pseudostem Wilt",    range: [12,20], desc: "Chlorosis advances from margins inward toward the midrib. Internal reddish-brown vascular streaking visible in pseudostem cross-section. Wilting progresses from outer to inner leaves; plant unable to maintain turgor." },
-    { num: "IV",  name: "Crown Rot Collapse", range: [20,31], desc: "Total collapse — all leaves wilt and the pseudostem rots at the crown. No viable vascular or leaf tissue remains. Soil inoculum (chlamydospores) persists >5 years with no known chemical cure (Frontiers 2019)." },
+    { num: "I", name: "Root Invasion", range: [0, 5], desc: "Foc TR4 chlamydospores germinate in root exudates, penetrate lateral roots, and colonise xylem vessels. No visible foliar symptoms yet; internal vascular discolouration begins in pseudostem." },
+    { num: "II", name: "Marginal Chlorosis", range: [5, 12], desc: "Yellowing appears FIRST at the MARGINS of the oldest, outermost leaves — the tissues furthest from the xylem supply. Incubation: 2–5 months after root infection (Agronomy 2021). Leaf margins turn bright yellow then orange-brown." },
+    { num: "III", name: "Pseudostem Wilt", range: [12, 20], desc: "Chlorosis advances from margins inward toward the midrib. Internal reddish-brown vascular streaking visible in pseudostem cross-section. Wilting progresses from outer to inner leaves; plant unable to maintain turgor." },
+    { num: "IV", name: "Crown Rot Collapse", range: [20, 31], desc: "Total collapse — all leaves wilt and the pseudostem rots at the crown. No viable vascular or leaf tissue remains. Soil inoculum (chlamydospores) persists >5 years with no known chemical cure (Frontiers 2019)." },
   ];
   const stageList = isFW ? FW_PHASES : BS_STAGES;
   const stageType = isFW ? "Phase" : "Stage";
@@ -1055,8 +1057,8 @@ function SimulationPage({ config }) {
               <div className="metrics-card-title">Leaf health metrics</div>
               {[
                 { label: "Healthy tissue", val: healthyPct + "%", cls: "good" },
-                { label: "Infected area",  val: infPct + "%",     cls: parseFloat(infPct) > 30 ? "bad" : "warn" },
-                { label: "Necrotic area",  val: necPct + "%",     cls: parseFloat(necPct) > 20 ? "bad" : "warn" },
+                { label: "Infected area", val: infPct + "%", cls: parseFloat(infPct) > 30 ? "bad" : "warn" },
+                { label: "Necrotic area", val: necPct + "%", cls: parseFloat(necPct) > 20 ? "bad" : "warn" },
               ].map(({ label, val, cls }) => (
                 <div key={label} className="metric-row">
                   <span className="metric-name">{label}</span>
@@ -1067,8 +1069,8 @@ function SimulationPage({ config }) {
                 <div className="progress-bar-bg">
                   <div style={{ display: "flex", height: 5 }}>
                     <div className="progress-bar-fill" style={{ width: healthyPct + "%", background: COLORS.green200 }} />
-                    <div className="progress-bar-fill" style={{ width: infPct + "%",     background: COLORS.amber100 }} />
-                    <div className="progress-bar-fill" style={{ width: necPct + "%",     background: COLORS.gray400 }} />
+                    <div className="progress-bar-fill" style={{ width: infPct + "%", background: COLORS.amber100 }} />
+                    <div className="progress-bar-fill" style={{ width: necPct + "%", background: COLORS.gray400 }} />
                   </div>
                 </div>
                 <div className="legend" style={{ marginTop: 10 }}>
@@ -1121,12 +1123,12 @@ function SimulationPage({ config }) {
             <div className="env-display">
               <div className="env-display-title">Simulation parameters</div>
               {[
-                { label: "Temperature",       val: `${temp}°C  (T_opt ${T_OPT}°C)` },
+                { label: "Temperature", val: `${temp}°C  (T_opt ${T_OPT}°C)` },
                 { label: "Relative humidity", val: `${rh}%  (onset ≥${RH_MIN}%)` },
-                { label: "Plant density",     val: density },
-                { label: "Disease model",     val: isFW ? "Marginal-lateral spread (FW)" : "σ-β Longitudinal (BS)" },
-                { label: "Neighbourhood",     val: "Moore 8-cell" },
-                { label: "Engine",            val: "Python SCA + PyVista" },
+                { label: "Plant density", val: density },
+                { label: "Disease model", val: isFW ? "Marginal-lateral spread (FW)" : "σ-β Longitudinal (BS)" },
+                { label: "Neighbourhood", val: "Moore 8-cell" },
+                { label: "Engine", val: "Python SCA + PyVista" },
               ].map(({ label, val }) => (
                 <div className="env-row" key={label}>
                   <span className="env-row-label">{label}</span>
@@ -1136,9 +1138,9 @@ function SimulationPage({ config }) {
               <div style={{ height: 1, background: "var(--border)", margin: "6px 0" }} />
               {[
                 { label: `CT  [β-poly, Topt=${T_OPT}°C]`, val: CT.toFixed(3) },
-                { label: `CRH [onset ≥${RH_MIN}% RH]`,   val: CRH.toFixed(3) },
-                { label: "E_ENV = CT × CRH",              val: E_ENV.toFixed(3), hi: true },
-                { label: "p_base (scaled)",               val: pBase.toFixed(5) },
+                { label: `CRH [onset ≥${RH_MIN}% RH]`, val: CRH.toFixed(3) },
+                { label: "E_ENV = CT × CRH", val: E_ENV.toFixed(3), hi: true },
+                { label: "p_base (scaled)", val: pBase.toFixed(5) },
               ].map(({ label, val, hi }) => (
                 <div className="env-row" key={label}>
                   <span className="env-row-label">{label}</span>
@@ -1222,8 +1224,8 @@ function AboutPage() {
             <div style={{ marginTop: 8 }}>
               {["YOLOv11-seg", "Stochastic Cellular Automata", "PyVista (3D)", "CLAHE + Gamma Correction",
                 "FastAPI", "React", "AdamW optimizer", "ISO-25010", "Moore 8-cell neighborhood"].map(t => (
-                <span className="tech-pill" key={t}>{t}</span>
-              ))}
+                  <span className="tech-pill" key={t}>{t}</span>
+                ))}
             </div>
           </div>
         </FadeIn>
@@ -1284,6 +1286,20 @@ export default function SAgingApp() {
   const [page, setPage] = useState("home");
   const [simConfig, setSimConfig] = useState({ disease: "black_sigatoka", temp: 26, rh: 85, density: "medium", detections: null, maskGrid: null });
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [session, setSession] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+
+  // Check for existing session on mount
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session);
+      setAuthLoading(false);
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
+      setSession(s);
+    });
+    return () => subscription.unsubscribe();
+  }, []);
 
   // Warm up ONNX session as soon as the app loads
   useEffect(() => { warmupSession(); }, []);
@@ -1295,14 +1311,22 @@ export default function SAgingApp() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }, []);
 
+  if (authLoading) return (
+    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#F8F7F4" }}>
+      <Loader size={24} style={{ animation: "spin 1s linear infinite", color: "#639922" }} />
+    </div>
+  );
+
+  if (!session) return <AuthPage onAuth={(s) => setSession(s)} />;
+
   return (
     <div className="saging-app">
       <nav className={`nav ${mobileMenuOpen ? "mobile-open" : ""}`}>
         <div className="nav-logo" onClick={() => navigate("home")}>
           <div className="nav-logo-mark">
             <svg viewBox="0 0 20 20" fill="none" stroke="#fff" strokeWidth="1.8">
-              <path d="M10 3C6 3 4 7 4 10c0 4 3 7 6 7s6-3 6-7c0-3-2-7-6-7z"/>
-              <path d="M10 3v14M4 10h12"/>
+              <path d="M10 3C6 3 4 7 4 10c0 4 3 7 6 7s6-3 6-7c0-3-2-7-6-7z" />
+              <path d="M10 3v14M4 10h12" />
             </svg>
           </div>
           <span className="nav-logo-text">S-Aging</span>
@@ -1325,6 +1349,20 @@ export default function SAgingApp() {
         <button className="nav-cta" onClick={() => navigate("upload")}>
           <Zap size={13} style={{ marginRight: 5, verticalAlign: "middle" }} />
           Start simulation
+        </button>
+
+        <button
+          onClick={() => supabase.auth.signOut()}
+          title={`Logged in as ${session?.user?.email}`}
+          style={{
+            background: "transparent", border: "1px solid rgba(255,255,255,0.25)",
+            color: "rgba(255,255,255,0.8)", borderRadius: 8,
+            padding: "6px 10px", cursor: "pointer", display: "flex",
+            alignItems: "center", gap: 5, fontSize: 12,
+          }}
+        >
+          <LogOut size={13} />
+          Log out
         </button>
 
         {/* Mobile hamburger */}

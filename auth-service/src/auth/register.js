@@ -21,8 +21,12 @@ export async function register({ email, username, password }, ipAddress = null, 
   if (existing?.username === username)
     return failure(ERROR_CODES.USERNAME_EXISTS, 'This username is already taken.');
 
-  // Create user in Supabase Auth
-  const { data: authData, error: authErr } = await supabase.auth.signUp({ email, password });
+  // Create user in Supabase Auth — username stored in metadata, trigger creates profile row
+  const { data: authData, error: authErr } = await supabase.auth.signUp({
+    email,
+    password,
+    options: { data: { username } },
+  });
   if (authErr) {
     if (authErr.message?.toLowerCase().includes('already registered'))
       return failure(ERROR_CODES.EMAIL_EXISTS, 'An account with this email already exists.');
@@ -30,14 +34,6 @@ export async function register({ email, username, password }, ipAddress = null, 
   }
 
   const userId = authData.user.id;
-
-  // Insert profile record
-  const { error: profileErr } = await supabaseAdmin
-    .from('profiles')
-    .insert({ id: userId, username, email });
-
-  if (profileErr)
-    return failure(ERROR_CODES.SERVER_ERROR, 'Account created but profile setup failed.');
 
   await logActivity(userId, 'user_registered', { username, email: '[redacted]' }, ipAddress, userAgent);
 
