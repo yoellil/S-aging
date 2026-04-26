@@ -5,13 +5,8 @@ import multer from 'multer';
 
 import { register }    from './auth/register.js';
 import { login }       from './auth/login.js';
-import { logout }      from './auth/logout.js';
 import { requireAuth } from './middleware/authMiddleware.js';
-import {
-  getUserLogs,
-  getActivityStats,
-  searchLogs,
-} from './logging/activityLogger.js';
+import { logActivity, getUserLogs, getActivityStats, searchLogs } from './logging/activityLogger.js';
 import {
   getUserProfile,
   updateUsername,
@@ -19,6 +14,7 @@ import {
   updateProfile,
 } from './profile/profileManager.js';
 import { uploadProfilePicture, deleteProfilePicture } from './profile/pictureUpload.js';
+import { supabase } from './config/supabase.js';
 import { success, failure, ERROR_CODES } from './utils/errorHandler.js';
 
 const app  = express();
@@ -52,19 +48,24 @@ app.post('/api/auth/register', async (req, res) => {
   res.status(result.success ? 201 : 400).json(result);
 });
 
+// Optional: keep /login for activity logging convenience. Frontend can also sign in directly with Supabase.
 app.post('/api/auth/login', async (req, res) => {
   const { email, password } = req.body;
   const result = await login({ email, password }, ip(req), req.headers['user-agent']);
   res.status(result.success ? 200 : 401).json(result);
 });
 
-app.post('/api/auth/logout', async (req, res) => {
-  const token = req.headers['x-session-token'] || req.headers['authorization']?.replace('Bearer ', '');
-  const result = await logout(token, ip(req), req.headers['user-agent']);
-  res.status(result.success ? 200 : 400).json(result);
+// Logout: just log the activity. Real session invalidation happens via Supabase signOut on the client.
+app.post('/api/auth/logout', requireAuth, async (req, res) => {
+  await logActivity(req.userId, 'user_logout', {
+    logout_time: new Date().toISOString(),
+  }, ip(req), req.headers['user-agent']);
+  // Best-effort: revoke Supabase session server-side
+  try { await supabase.auth.admin.signOut(req.sessionToken); } catch { /* ignore */ }
+  res.json(success({ logged_out_at: new Date().toISOString() }, 'You have been logged out.'));
 });
 
-// ── Protected routes (require valid session) ──────────────────────────────────
+// ── Protected routes (Supabase JWT required) ──────────────────────────────────
 
 // ── Activity logs ──
 
@@ -109,7 +110,7 @@ app.put('/api/profile/password', requireAuth, async (req, res) => {
   const { current_password, new_password } = req.body;
   const result = await updatePassword(
     req.userId, current_password, new_password,
-    req.sessionToken, ip(req), req.headers['user-agent']
+    null, ip(req), req.headers['user-agent']
   );
   res.status(result.success ? 200 : 400).json(result);
 });

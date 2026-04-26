@@ -13,17 +13,38 @@ import {
 
 export async function getUserProfile(userId) {
   try {
+    // Use a wildcard select so we don't 500 if the schema is missing optional columns
     const { data: profile, error } = await supabaseAdmin
       .from('profiles')
-      .select('id, username, email, full_name, bio, phone, profile_picture_url, created_at, updated_at, profile_updated_at')
+      .select('*')
       .eq('id', userId)
       .maybeSingle();
 
-    if (error) throw error;
-    if (!profile) return failure(ERROR_CODES.USER_NOT_FOUND, 'User profile not found.');
+    if (error) {
+      console.error('[getUserProfile] Supabase error:', error);
+      throw error;
+    }
+    if (!profile) {
+      // Auto-create a minimal profile row if it doesn't exist (e.g. user registered before profiles table was set up)
+      console.warn('[getUserProfile] No profile row for user', userId, '— attempting to create one');
+      const { data: authUser } = await supabaseAdmin.auth.admin.getUserById(userId);
+      const email = authUser?.user?.email || null;
+      const fallbackUsername = email ? email.split('@')[0] : `user_${userId.slice(0, 8)}`;
+      const { data: created, error: insertErr } = await supabaseAdmin
+        .from('profiles')
+        .insert({ id: userId, email, username: fallbackUsername })
+        .select('*')
+        .maybeSingle();
+      if (insertErr) {
+        console.error('[getUserProfile] Insert fallback failed:', insertErr);
+        return failure(ERROR_CODES.USER_NOT_FOUND, 'User profile not found and could not be created.');
+      }
+      return success(created, 'Profile created.');
+    }
 
     return success(profile, 'Profile retrieved successfully.');
-  } catch {
+  } catch (e) {
+    console.error('[getUserProfile] Caught error:', e?.message || e);
     return failure(ERROR_CODES.SERVER_ERROR, 'Unable to retrieve profile. Please try again.');
   }
 }

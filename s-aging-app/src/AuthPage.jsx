@@ -2,22 +2,20 @@ import { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { supabase } from "./utils/supabase";
 
-const AUTH_URL = "http://localhost:3001/api/auth";
-
 const COLORS = {
   green400: "#639922", green600: "#3B6D11", green50: "#EAF3DE",
   red400: "#E24B4A", red50: "#FCEBEB",
   gray400: "#888780", gray600: "#5F5E5A", gray50: "#F8F7F4",
 };
 
-export default function AuthPage({ onAuth }) {
+export default function AuthPage({ onAuth, initialNotice }) {
   const [mode, setMode]       = useState("login"); // "login" | "register"
   const [email, setEmail]     = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState(null);
-  const [info, setInfo]       = useState(null);
+  const [info, setInfo]       = useState(initialNotice || null);
 
   const switchMode = (m) => {
     setMode(m);
@@ -33,40 +31,32 @@ export default function AuthPage({ onAuth }) {
 
     try {
       if (mode === "register") {
-        // Call auth-service to register (creates profile record)
-        const res = await fetch(`${AUTH_URL}/register`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email, username, password }),
+        // Register directly via Supabase. The DB trigger handle_new_user()
+        // auto-creates the matching public.profiles row.
+        const { data, error: signUpErr } = await supabase.auth.signUp({
+          email,
+          password,
+          options: { data: { username } },
         });
-        const data = await res.json();
-        if (!data.success) { setError(data.message); setLoading(false); return; }
-        setInfo("Account created! Check your email to confirm, then log in.");
-        switchMode("login");
+        if (signUpErr) { setError(signUpErr.message); setLoading(false); return; }
 
+        if (!data?.session) {
+          // Email confirmation required
+          setInfo("Account created! Check your email to confirm, then log in.");
+          switchMode("login");
+        } else {
+          // Email confirmation is disabled in Supabase settings → auto-login
+          onAuth(data.session, data.user);
+        }
       } else {
-        // Sign in via Supabase Auth
+        // Login: sign in directly with Supabase
         const { data, error: authErr } = await supabase.auth.signInWithPassword({ email, password });
         if (authErr) { setError(authErr.message); setLoading(false); return; }
-
-        // Also create session in auth-service to get a session token
-        let authToken = null;
-        try {
-          const loginRes = await fetch(`${AUTH_URL}/login`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ email, password }),
-          });
-          const loginData = await loginRes.json();
-          if (loginData.success) authToken = loginData.data?.token ?? null;
-        } catch {
-          // Auth-service offline — proceed without session token
-        }
-
-        onAuth(data.session, data.user, authToken);
+        if (!data?.session) { setError("Login succeeded but no session was returned."); setLoading(false); return; }
+        onAuth(data.session, data.user);
       }
-    } catch {
-      setError("Unable to reach the server. Make sure the auth-service is running on port 3001.");
+    } catch (err) {
+      setError(err?.message || "Network error. Please check your connection and try again.");
     } finally {
       setLoading(false);
     }

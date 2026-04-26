@@ -97,6 +97,16 @@ export async function authLogout(sessionToken) {
   return _authFetch("POST", "/api/auth/logout", sessionToken);
 }
 
+// ── Session refresh (exchange Supabase JWT for a new custom token) ───────────
+
+export async function refreshSession(supabaseJwt) {
+  const res = await fetch(`${AUTH_URL}/api/auth/refresh`, {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${supabaseJwt}` },
+  });
+  return res.json();
+}
+
 // ── Profile ─────────────────────────────────────────────────────────────────
 
 export async function getProfile(sessionToken) {
