@@ -6,7 +6,7 @@ import {
   Hexagon, ScanEye, Orbit, Scroll,
   TestTubes, Sparkles, Atom, MoveRight, LoaderCircle, DoorOpen,
   Fingerprint, Leaf, FlaskConical, BookOpen, Users, BarChart3,
-  CheckCircle2, Image as ImageIcon, Maximize2, Sun,
+  CheckCircle2, Image as ImageIcon, Maximize2, Sun, Menu,
   LoaderCircle as Loader,
 } from "lucide-react";
 import { detectDisease, warmupSession } from "./detection";
@@ -1771,7 +1771,7 @@ export default function SAgingApp() {
 
   return (
     <div className="saging-app">
-      <nav className={`nav ${mobileMenuOpen ? "mobile-open" : ""}`}>
+      <nav className="nav">
         <div className="nav-logo" onClick={() => navigate("home")}>
           <div className="nav-logo-mark">
             <svg viewBox="0 0 20 20" fill="none" stroke="#fff" strokeWidth="1.8">
@@ -1811,11 +1811,78 @@ export default function SAgingApp() {
           Log out
         </button>
 
-        {/* Mobile hamburger */}
         <button className="nav-hamburger" onClick={() => setMobileMenuOpen(o => !o)}>
-          {mobileMenuOpen ? <X size={20} /> : <TestTubes size={20} />}
+          <Menu size={20} />
         </button>
       </nav>
+
+      <AnimatePresence>
+        {mobileMenuOpen && (
+          <>
+            <motion.div
+              className="nav-drawer-backdrop"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              onClick={() => setMobileMenuOpen(false)}
+            />
+            <motion.div
+              className="nav-drawer"
+              initial={{ x: "100%" }}
+              animate={{ x: 0 }}
+              exit={{ x: "100%" }}
+              transition={{ type: "spring", damping: 28, stiffness: 260 }}
+            >
+              <div className="nav-drawer-top">
+                <div className="nav-logo" onClick={() => navigate("home")} style={{ gap: 8 }}>
+                  <div className="nav-logo-mark" style={{ width: 28, height: 28 }}>
+                    <svg viewBox="0 0 20 20" fill="none" stroke="#fff" strokeWidth="1.8">
+                      <path d="M10 3C6 3 4 7 4 10c0 4 3 7 6 7s6-3 6-7c0-3-2-7-6-7z" />
+                      <path d="M10 3v14M4 10h12" />
+                    </svg>
+                  </div>
+                  <span className="nav-logo-text" style={{ fontSize: 16 }}>S-Aging</span>
+                </div>
+                <button className="nav-drawer-close" onClick={() => setMobileMenuOpen(false)}>
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="nav-drawer-links">
+                {[
+                  ["home", "Home", <Hexagon size={16} />],
+                  ["upload", "Analyze", <ScanEye size={16} />],
+                  ["simulation", "Simulate", <Orbit size={16} />],
+                  ["about", "About", <Scroll size={16} />],
+                  ["profile", "Profile", <Fingerprint size={16} />],
+                ].map(([p, label, icon]) => (
+                  <button key={p} className={`nav-drawer-link ${page === p ? "active" : ""}`} onClick={() => navigate(p)}>
+                    <span className="nav-link-icon" style={{ opacity: 1 }}>{icon}</span>
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="nav-drawer-footer">
+                <button className="nav-cta" style={{ width: "100%", justifyContent: "center", padding: "12px" }} onClick={() => navigate("upload")}>
+                  <Atom size={14} style={{ marginRight: 6, verticalAlign: "middle" }} />
+                  Start simulation
+                </button>
+                <button
+                  onClick={handleLogout}
+                  title={`Logged in as ${auth.session?.user?.email}`}
+                  className="nav-logout-btn"
+                  style={{ width: "100%", justifyContent: "center", padding: "11px 12px" }}
+                >
+                  <DoorOpen size={14} />
+                  Log out
+                </button>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
 
       {page === "home" && <HomePage onNavigate={navigate} />}
       {page === "upload" && <UploadPage onNavigate={navigate} setSimConfig={setSimConfig} />}

@@ -136,14 +136,22 @@ export async function uploadProfilePicture(file) {
   const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
   const path = `${user.id}/${Date.now()}.${ext}`;
 
-  const { error: uploadErr } = await supabase.storage
+  console.log("[uploadProfilePicture] Uploading to path:", path, "type:", file.type, "size:", file.size);
+
+  const { data: uploadData, error: uploadErr } = await supabase.storage
     .from("profile-pictures")
     .upload(path, file, { upsert: true, contentType: file.type });
 
-  if (uploadErr) return { success: false, message: uploadErr.message };
+  if (uploadErr) {
+    console.error("[uploadProfilePicture] Storage upload failed:", uploadErr);
+    return { success: false, message: `Upload failed: ${uploadErr.message}` };
+  }
+
+  console.log("[uploadProfilePicture] Upload succeeded:", uploadData);
 
   const { data: pub } = supabase.storage.from("profile-pictures").getPublicUrl(path);
   const url = pub.publicUrl;
+  console.log("[uploadProfilePicture] Public URL:", url);
 
   // Best-effort: delete previous avatar
   const { data: prev } = await supabase
@@ -160,7 +168,6 @@ export async function uploadProfilePicture(file) {
     .from("profiles")
     .update({
       profile_picture_url: url,
-      avatar_url: url,
       profile_updated_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     })
@@ -168,8 +175,12 @@ export async function uploadProfilePicture(file) {
     .select(PROFILE_COLS)
     .single();
 
-  if (error) return { success: false, message: error.message };
-  return { success: true, data, message: "Picture uploaded." };
+  if (error) {
+    console.error("[uploadProfilePicture] Profile update failed:", error);
+    return { success: false, message: `Saved image but couldn't update profile: ${error.message}` };
+  }
+  console.log("[uploadProfilePicture] Profile updated with url:", url);
+  return { success: true, data: { ...data, profile_picture_url: url }, message: "Picture uploaded." };
 }
 
 export async function deleteProfilePicture() {
@@ -188,7 +199,6 @@ export async function deleteProfilePicture() {
     .from("profiles")
     .update({
       profile_picture_url: null,
-      avatar_url: null,
       profile_updated_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     })

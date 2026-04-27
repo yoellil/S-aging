@@ -1062,74 +1062,119 @@ body {
   }
 }
 
-/* ══════ MOBILE NAV — full-screen overlay ════════════════ */
+/* ══════ MOBILE NAV — right-side drawer ════════════════ */
 @media (max-width: 700px) {
   .nav {
     height: 56px;
     padding: 0 1rem;
     padding-top: env(safe-area-inset-top);
   }
-  .nav-links, .nav-cta { display: none; }
+  .nav-links, .nav-cta, .nav-logout-btn { display: none; }
   .nav-hamburger { display: flex; }
+}
 
-  .nav.mobile-open .nav-links {
+/* ── Drawer backdrop ── */
+.nav-drawer-backdrop {
+  display: none;
+}
+@media (max-width: 700px) {
+  .nav-drawer-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.35);
+    z-index: 199;
+  }
+}
+
+/* ── Right-side drawer panel ── */
+.nav-drawer {
+  display: none;
+}
+@media (max-width: 700px) {
+  .nav-drawer {
     display: flex;
     flex-direction: column;
     position: fixed;
-    top: calc(56px + env(safe-area-inset-top, 0px));
-    left: 0;
+    top: 0;
     right: 0;
     bottom: 0;
-    background: rgba(255,255,255,0.98);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    padding: 24px 20px;
-    gap: 4px;
+    width: 280px;
+    max-width: 85vw;
+    background: rgba(255, 255, 255, 0.98);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
     z-index: 200;
-    animation: mobileMenuIn 0.3s var(--ease-out);
+    box-shadow: -4px 0 32px rgba(0, 0, 0, 0.12);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
   }
-  .nav.mobile-open .nav-links .nav-link {
-    font-size: 16px;
-    padding: 14px 16px;
-    border-radius: var(--radius-md);
-    min-height: 48px;
+
+  .nav-drawer-top {
     display: flex;
     align-items: center;
+    justify-content: space-between;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--color-border-secondary);
+    min-height: calc(56px + env(safe-area-inset-top, 0px));
+    padding-top: calc(14px + env(safe-area-inset-top, 0px));
   }
-  .nav.mobile-open .nav-links .nav-link:hover {
-    background: var(--bg2);
+
+  .nav-drawer-close {
+    background: none;
+    border: none;
+    cursor: pointer;
+    width: 36px;
+    height: 36px;
+    border-radius: var(--radius-sm);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+    transition: background var(--duration-fast);
   }
-  .nav.mobile-open .nav-links .nav-link.active {
+  .nav-drawer-close:hover { background: var(--bg2); }
+
+  .nav-drawer-links {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 12px 12px;
+    gap: 2px;
+  }
+
+  .nav-drawer-link {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 13px 14px;
+    border-radius: var(--radius-md);
+    font-size: 15px;
+    font-family: var(--font-body);
+    color: var(--text-muted);
+    font-weight: 400;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    text-align: left;
+    min-height: 48px;
+    transition: all var(--duration-fast);
+  }
+  .nav-drawer-link:hover { background: var(--bg2); color: var(--text); }
+  .nav-drawer-link.active {
     background: var(--green-50);
     color: var(--green-mid);
     font-weight: 500;
   }
-  .nav.mobile-open .nav-cta {
-    display: block;
-    width: calc(100% - 40px);
-    text-align: center;
-    position: fixed;
-    bottom: max(24px, env(safe-area-inset-bottom));
-    left: 20px;
-    right: 20px;
-    padding: 14px;
-    font-size: 15px;
-    min-height: 48px;
-    z-index: 201;
-    animation: mobileMenuIn 0.4s var(--ease-out);
-  }
 
-  .nav-hamburger {
-    width: 40px;
-    height: 40px;
+  .nav-drawer-footer {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px 12px;
+    border-top: 1px solid var(--color-border-secondary);
   }
-}
-
-@keyframes mobileMenuIn {
-  from { opacity: 0; transform: translateY(-12px); }
-  to   { opacity: 1; transform: translateY(0); }
 }
 
 /* ══════ Very small screens (320px-360px) ════════════════ */
