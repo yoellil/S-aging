@@ -109,12 +109,19 @@ async def simulate(req: SimRequest):
             )
             img_b64 = base64.b64encode(img_bytes).decode()
 
+            grid_u8       = frame["grid"].astype(np.uint8)
+            intensity_u8  = (frame["intensity"] * 255).clip(0, 255).astype(np.uint8)
+            gridData_b64      = base64.b64encode(grid_u8.ravel().tobytes()).decode()
+            intensityData_b64 = base64.b64encode(intensity_u8.ravel().tobytes()).decode()
+
             payload = {
-                "step":  frame["step"],
-                "month": frame["month"],
-                "image": img_b64,
-                "stats": frame["stats"],
-                "env":   frame["env"],
+                "step":          frame["step"],
+                "month":         frame["month"],
+                "image":         img_b64,
+                "gridData":      gridData_b64,
+                "intensityData": intensityData_b64,
+                "stats":         frame["stats"],
+                "env":           frame["env"],
             }
             yield json.dumps(payload) + "\n"
 

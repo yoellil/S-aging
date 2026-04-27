@@ -201,3 +201,6 @@ The system is evaluated against:
 
 ---
 
+## Team
+
+Thesis by Balitayo, Baranda, Reyes, and Rodriguez · Adviser: Mr. Anthony D. Aquino · BS Computer Science, FEU Institute of Technology, March 2026.

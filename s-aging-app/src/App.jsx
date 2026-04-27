@@ -6,7 +6,7 @@ import {
   Hexagon, ScanEye, Orbit, Scroll,
   TestTubes, Sparkles, Atom, MoveRight, LoaderCircle, DoorOpen,
   Fingerprint, Leaf, FlaskConical, BookOpen, Users, BarChart3,
-  CheckCircle2, Image, Maximize2, Sun,
+  CheckCircle2, Image as ImageIcon, Maximize2, Sun,
   LoaderCircle as Loader,
 } from "lucide-react";
 import { detectDisease, warmupSession } from "./detection";
@@ -14,6 +14,9 @@ import { streamSimulation } from "./api";
 import { supabase } from "./utils/supabase";
 import AuthPage from "./AuthPage";
 import ProfilePage from "./ProfilePage";
+import * as THREE from "three";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 
 // ── CONSTANTS ────────────────────────────────────────────────────────────────
 const COLORS = {
@@ -887,7 +890,7 @@ function UploadPage({ onNavigate, setSimConfig }) {
               { icon: Sun, color: "#BA7517", title: "Good lighting", desc: "Diffused natural light — avoid harsh shadows or flash glare on the leaf surface." },
               { icon: Maximize2, color: "#1D9E75", title: "Fill the frame", desc: "The leaf should cover at least 60% of the image area. Avoid busy backgrounds." },
               { icon: Leaf, color: "#639922", title: "Show the margins", desc: "Capture the full leaf including edges — margin chlorosis is key for Fusarium Wilt." },
-              { icon: Image, color: "#3B6D11", title: "JPG · PNG · WEBP", desc: "Max 10 MB · Minimum 640×640 px recommended for YOLOv11 segmentation." },
+              { icon: ImageIcon, color: "#3B6D11", title: "JPG · PNG · WEBP", desc: "Max 10 MB · Minimum 640×640 px recommended for YOLOv11 segmentation." },
             ].map(({ icon: Icon, color, title, desc }) => (
               <div className="upload-tip-card" key={title}>
                 <div className="upload-tip-icon" style={{ background: color + "1A", color }}>
@@ -918,6 +921,179 @@ function UploadPage({ onNavigate, setSimConfig }) {
         </div>
       </div>
     </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  3-D INTERACTIVE LEAF VIEWER  — Three.js + OrbitControls
+// ══════════════════════════════════════════════════════════════════════════════
+const _LEAF_ROWS = 100, _LEAF_COLS = 160, _TEX = 512;
+
+function LeafViewer3D({ frame, disease }) {
+  const mountRef = useRef(null);
+  const stateRef = useRef(null);
+  const pendingRef = useRef(null); // holds { gridData, intensityData } while scene loads
+
+  const decodeB64 = (b64) => {
+    const bin = atob(b64);
+    const out = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  };
+
+  const paintCanvas = useCallback((gridData, intensityData, diseaseType) => {
+    const s = stateRef.current;
+    if (!s) { pendingRef.current = { gridData, intensityData, diseaseType }; return; }
+    const { ctx, baseImg, texture } = s;
+
+    ctx.clearRect(0, 0, _TEX, _TEX);
+    if (baseImg?.complete && baseImg.naturalWidth > 0)
+      ctx.drawImage(baseImg, 0, 0, _TEX, _TEX);
+
+    const gridU8      = typeof gridData      === "string" ? decodeB64(gridData)      : gridData;
+    const intensityU8 = typeof intensityData === "string" ? decodeB64(intensityData) : intensityData;
+    const cellW = 0.5 * _TEX / _LEAF_COLS; // ~1.6 px
+    const cellH = _TEX / _LEAF_ROWS;       // ~5.12 px
+
+    for (let r = 0; r < _LEAF_ROWS; r++) {
+      for (let c = 0; c < _LEAF_COLS; c++) {
+        const idx = r * _LEAF_COLS + c;
+        const state = gridU8[idx];
+        if (state === 0) continue;
+
+        const iv = intensityU8[idx] / 255;
+        const px = (0.25 + (c / _LEAF_COLS) * 0.5) * _TEX;
+        const py = (r / _LEAF_ROWS) * _TEX;
+
+        let ri, gi, bi, alpha;
+        if (state === 1) {
+          if (diseaseType === "fusarium_wilt") {
+            ri = 225 + iv * (185 - 225); gi = 220 + iv * (120 - 220); bi = 70 + iv * (25 - 70);
+          } else {
+            ri = 160 + iv * (80 - 160); gi = 140 + iv * (40 - 140); bi = 45 + iv * (10 - 45);
+          }
+          alpha = 0.50 + 0.45 * iv;
+        } else {
+          ri = 95 + iv * (25 - 95); gi = 55 + iv * (12 - 55); bi = 18 + iv * (4 - 18);
+          alpha = 0.78 + 0.18 * iv;
+        }
+        ctx.fillStyle = `rgba(${Math.round(ri)},${Math.round(gi)},${Math.round(bi)},${alpha.toFixed(3)})`;
+        ctx.fillRect(px, py, cellW + 0.5, cellH + 0.5);
+      }
+    }
+    texture.needsUpdate = true;
+  }, []);
+
+  useEffect(() => {
+    const container = mountRef.current;
+    if (!container) return;
+
+    const W = container.clientWidth || 900;
+    const H = 320;
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(W, H);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    container.appendChild(renderer.domElement);
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0b180b);
+    scene.add(new THREE.AmbientLight(0xffffff, 1.4));
+    const dir = new THREE.DirectionalLight(0xffffff, 0.7);
+    dir.position.set(5, 5, 30);
+    scene.add(dir);
+
+    const camera = new THREE.PerspectiveCamera(45, W / H, 0.1, 2000);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.08;
+
+    const canvas2d = document.createElement("canvas");
+    canvas2d.width = _TEX;
+    canvas2d.height = _TEX;
+    const ctx = canvas2d.getContext("2d");
+    const texture = new THREE.CanvasTexture(canvas2d);
+    texture.flipY = false;
+    texture.colorSpace = THREE.SRGBColorSpace;
+
+    const baseImg = new Image();
+    baseImg.crossOrigin = "anonymous";
+    baseImg.src = "/models/banana_leaf/textures/ganeshlambert4SG_baseColor.png";
+    baseImg.onload = () => {
+      ctx.drawImage(baseImg, 0, 0, _TEX, _TEX);
+      texture.needsUpdate = true;
+      // flush any pending disease frame
+      if (pendingRef.current) {
+        const { gridData, intensityData, diseaseType } = pendingRef.current;
+        pendingRef.current = null;
+        paintCanvas(gridData, intensityData, diseaseType);
+      }
+    };
+
+    const loader = new GLTFLoader();
+    loader.load("/models/banana_leaf/scene.gltf", (gltf) => {
+      const mat = new THREE.MeshStandardMaterial({
+        map: texture,
+        side: THREE.DoubleSide,
+        roughness: 0.6,
+        metalness: 0.0,
+      });
+      gltf.scene.traverse((child) => {
+        if (child.isMesh) child.material = mat;
+      });
+      scene.add(gltf.scene);
+
+      const box    = new THREE.Box3().setFromObject(gltf.scene);
+      const center = box.getCenter(new THREE.Vector3());
+      const size   = box.getSize(new THREE.Vector3());
+      const dist   = Math.max(size.x, size.y) * 1.7;
+      camera.position.set(center.x, center.y, center.z + dist);
+      camera.lookAt(center);
+      controls.target.copy(center);
+      controls.update();
+    });
+
+    let animId;
+    const animate = () => {
+      animId = requestAnimationFrame(animate);
+      controls.update();
+      renderer.render(scene, camera);
+    };
+    animate();
+
+    const onResize = () => {
+      const w = container.clientWidth;
+      renderer.setSize(w, H);
+      camera.aspect = w / H;
+      camera.updateProjectionMatrix();
+    };
+    window.addEventListener("resize", onResize);
+
+    stateRef.current = { renderer, scene, camera, controls, texture, ctx, baseImg };
+
+    return () => {
+      cancelAnimationFrame(animId);
+      window.removeEventListener("resize", onResize);
+      controls.dispose();
+      renderer.dispose();
+      if (container.contains(renderer.domElement))
+        container.removeChild(renderer.domElement);
+      stateRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!frame?.gridData) return;
+    paintCanvas(frame.gridData, frame.intensityData, disease);
+  }, [frame, disease, paintCanvas]);
+
+  return (
+    <div
+      ref={mountRef}
+      style={{ width: "100%", height: 320, borderRadius: 8, overflow: "hidden", cursor: "grab" }}
+    />
   );
 }
 
@@ -1086,15 +1262,10 @@ function SimulationPage({ config }) {
               <div className="sim-canvas-wrap" style={{ position: "relative", minHeight: 240, background: "#0C1A0C", borderRadius: 8 }}>
                 {activeTab === "leaf" ? (
                   <>
-                    {/* PyVista-rendered frame */}
-                    {currentFrame ? (
-                      <img
-                        src={`data:image/jpeg;base64,${currentFrame.image}`}
-                        alt={`Month ${month} — ${diseaseName}`}
-                        className="sim-canvas"
-                        style={{ width: "100%", display: "block", borderRadius: 8 }}
-                      />
-                    ) : simState === "error" ? (
+                    {/* Interactive 3-D leaf viewer */}
+                    {simState !== "error" ? (
+                      <LeafViewer3D frame={currentFrame} disease={disease} />
+                    ) : (
                       <div style={{ padding: 32, textAlign: "center" }}>
                         <div style={{ fontSize: 13, color: COLORS.red400, marginBottom: 10 }}>
                           Backend unreachable
@@ -1108,14 +1279,22 @@ function SimulationPage({ config }) {
                           </code>
                         </div>
                       </div>
-                    ) : (
-                      <div style={{ padding: 40, textAlign: "center", color: "var(--text-muted)", fontSize: 13 }}>
-                        <Loader size={20} style={{ animation: "spin 1s linear infinite", marginBottom: 12 }} />
+                    )}
+
+                    {/* Initial loading overlay (no frames yet) */}
+                    {simState === "loading" && !currentFrame && simState !== "error" && (
+                      <div style={{
+                        position: "absolute", inset: 0, display: "flex", flexDirection: "column",
+                        alignItems: "center", justifyContent: "center",
+                        background: "rgba(11,24,11,0.72)", backdropFilter: "blur(4px)", borderRadius: 8,
+                        color: "var(--text-muted)", fontSize: 13, gap: 10,
+                      }}>
+                        <Loader size={20} style={{ animation: "spin 1s linear infinite" }} />
                         <div>Computing SCA simulation…</div>
                       </div>
                     )}
 
-                    {/* Loading overlay badge */}
+                    {/* Progress badge while streaming */}
                     {simState === "loading" && currentFrame && (
                       <div style={{
                         position: "absolute", bottom: 8, right: 10, fontSize: 11,

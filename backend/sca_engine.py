@@ -15,6 +15,12 @@ Phase 4 – environmental factors CT (temperature) and CRH (humidity)
 import numpy as np
 from typing import Optional, List, Dict, Generator
 
+try:
+    from scipy.ndimage import binary_erosion, distance_transform_edt
+    _HAS_SCIPY = True
+except ImportError:
+    _HAS_SCIPY = False
+
 
 class SCAEngine:
     COLS: int = 160
@@ -43,6 +49,24 @@ class SCAEngine:
             np.arange(self.ROWS, dtype=np.float32)[:, np.newaxis]
             * np.ones((1, self.COLS), dtype=np.float32)
         )
+
+        # Precompute leaf margin mask and per-cell distance from the boundary.
+        # margin_dist[r,c] = Euclidean distance (cells) from the nearest background
+        # pixel — 0 at the leaf edge, ~43 at the midrib centre.
+        if _HAS_SCIPY:
+            _interior = binary_erosion(self.leaf_mask)
+            self.margin_mask: np.ndarray = self.leaf_mask & ~_interior
+            self.margin_dist: np.ndarray = distance_transform_edt(self.leaf_mask).astype(np.float32)
+        else:
+            # 4-connected approximation without scipy
+            lm = self.leaf_mask.astype(np.uint8)
+            padded = np.pad(lm, 1, constant_values=0)
+            eroded = (
+                padded[:-2, 1:-1] & padded[2:, 1:-1] &
+                padded[1:-1, :-2] & padded[1:-1, 2:]
+            ).astype(bool)
+            self.margin_mask = self.leaf_mask & ~eroded
+            self.margin_dist = np.where(self.leaf_mask, 10.0, 0.0).astype(np.float32)
 
     # ── Phase 4: Environmental coefficients ──────────────────────────────────
 
@@ -120,27 +144,45 @@ class SCAEngine:
         img_h: Optional[int] = None,
         mask_grid: Optional[List[int]] = None,
     ) -> None:
-        # ── Fusarium Wilt: ALWAYS use anatomical margin seeds ─────────────────
-        # FW (Foc TR4) vascular blockage causes chlorosis EXCLUSIVELY at the leaf
-        # margins first — xylem failure cuts water to the margin tips, which are
-        # furthest from the pseudostem supply.  YOLO or bbox seeds are ignored for
-        # FW because they may place infection at arbitrary image coordinates that do
-        # not reflect the correct leaf-margin anatomy.
+        # ── Fusarium Wilt: margin-first seeding ───────────────────────────────
+        # FW (Foc TR4) causes chlorosis at the leaf margins first — xylem blockage
+        # starves the marginal cells furthest from the vascular supply.
+        # Seeding strategy:
+        #   1. If a YOLO mask is provided, restrict it to the outer margin zone
+        #      (margin_dist ≤ 20 cells) so only correctly-placed marginal lesions
+        #      are used.  Any mask pixels in the leaf interior are discarded.
+        #   2. If no usable mask pixels survive after filtering, fall back to seeding
+        #      the ENTIRE computed leaf margin so the simulation always starts with
+        #      the characteristic yellow-green band at both leaf edges.
         # Ref: MDPI Agronomy 2021 (Venezuelan FW); frontiersin.org/fpls/2019/1395
         if is_fw:
-            seeds = [
-                (25,  6), (50,  5), (80,  6), (110,  5), (138,  7),  # top margin
-                (25, 93), (50, 94), (80, 93), (110, 94), (138, 92),  # bottom margin
-                (40, 12), (70, 11), (100, 12), (130, 11),             # near-top band
-                (40, 87), (70, 88), (100, 87), (130, 88),             # near-bottom band
-            ]
-            for cx, cy in seeds:
-                for dy in range(-3, 4):
-                    for dx in range(-3, 4):
-                        sx, sy = cx + dx, cy + dy
-                        if 0 <= sx < self.COLS and 0 <= sy < self.ROWS:
-                            grid[sy, sx] = 1
-                            intensity[sy, sx] = float(0.5 + np.random.random() * 0.5)
+            # Phase 1A – use YOLO mask restricted to the margin zone
+            if mask_grid is not None and len(mask_grid) == self.ROWS * self.COLS:
+                mask_arr = np.array(mask_grid, dtype=np.uint8).reshape(self.ROWS, self.COLS)
+                mask_arr[~self.leaf_mask] = 0
+                margin_zone = self.margin_dist <= 20.0
+                mask_arr[~margin_zone] = 0
+                infected = mask_arr == 1
+                necrotic = mask_arr == 2
+                if infected.any() or necrotic.any():
+                    n_inf = int(np.sum(infected))
+                    if n_inf > 0:
+                        grid[infected] = 1
+                        intensity[infected] = (
+                            0.3 + np.random.random(n_inf).astype(np.float32) * 0.4
+                        )
+                    if necrotic.any():
+                        grid[necrotic] = 2
+                        intensity[necrotic] = 1.0
+                    return
+
+            # Fallback – seed the full computed leaf margin
+            ys, xs = np.where(self.margin_mask)
+            rng = np.random.default_rng()
+            base_int = (rng.random(len(ys)) * 0.35 + 0.15).astype(np.float32)
+            for i, (y, x) in enumerate(zip(ys, xs)):
+                grid[y, x] = 1
+                intensity[y, x] = float(base_int[i])
             return
 
         # ── Black Sigatoka: use YOLO mask → bbox → anatomical defaults ────────
@@ -186,14 +228,14 @@ class SCAEngine:
                             int(gy1 + rng.integers(0, max(1, gy2 - gy1))),
                         ))
 
-        # Phase 1C: BS anatomical defaults — abaxial lower-margin Stage I specks
-        # Ref: Maxapress 2024 — "tiny reddish-rusty brown flecks on underside of leaf"
+        # Phase 1C: BS anatomical defaults — lesions can initiate anywhere on the leaf
+        # Ref: Maxapress 2024 — BS lesions appear throughout the blade on both surfaces
         if not seeds:
-            seeds = [
-                (20,  8), (48,  7), (75,  9), (100,  7), (128, 10), (148,  8),
-                (30, 17), (58, 16), (90, 18), (118, 17), (142, 16),
-                (55, 26), (95, 25),
-            ]
+            rng = np.random.default_rng()
+            interior_ys, interior_xs = np.where(self.leaf_mask)
+            n = min(14, len(interior_ys))
+            chosen = rng.choice(len(interior_ys), size=n, replace=False)
+            seeds = [(int(interior_xs[i]), int(interior_ys[i])) for i in chosen]
 
         for cx, cy in seeds:
             for dy in range(-1, 2):
@@ -282,6 +324,14 @@ class SCAEngine:
 
         w_avg = np.where(n_inf > 0, w_sum / np.maximum(n_inf, 1e-9), 0.0)
         p_trans = (1.0 - np.power(np.maximum(0.0, 1.0 - p_base), n_inf)) * w_avg
+
+        if is_fw:
+            # FW spreads fastest at the leaf margin (margin_dist ≈ 0) and
+            # much slower toward the midrib (margin_dist ≈ 40).
+            # Factor: 1.0 at edge → ~0.18 at midrib, creating the characteristic
+            # band of chlorosis that widens slowly inward over months.
+            margin_factor = np.exp(-self.margin_dist / 10.0)
+            p_trans = p_trans * (0.15 + 0.85 * margin_factor)
 
         to_infect = was_healthy & (np.random.random((self.ROWS, self.COLS)) < p_trans)
         new_grid[to_infect] = 1
