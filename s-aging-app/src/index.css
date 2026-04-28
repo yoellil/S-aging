@@ -1740,6 +1740,50 @@ textarea.profile-input { min-height: 72px; }
   font-size: 11px; color: var(--color-text-tertiary); white-space: nowrap;
 }
 
+/* ── Simulation history log ── */
+.profile-simlog-list { display: flex; flex-direction: column; }
+.profile-simlog-item {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 10px 8px; margin: 0 -8px;
+  border-bottom: 1px solid var(--color-border-secondary);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: background var(--duration-fast);
+}
+.profile-simlog-item:last-child { border-bottom: none; }
+.profile-simlog-item:hover { background: var(--bg2); }
+.profile-simlog-item:hover .profile-simlog-rerun { opacity: 1; }
+.profile-simlog-item.rerunning { opacity: 0.6; cursor: wait; }
+.profile-simlog-badge {
+  min-width: 44px; height: 44px; border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 10px; font-weight: 700; letter-spacing: 0.3px; flex-shrink: 0;
+}
+.profile-simlog-thumb {
+  width: 44px; height: 44px; border-radius: 8px; object-fit: cover; flex-shrink: 0;
+  border: 1px solid var(--color-border-secondary);
+}
+.profile-simlog-body { flex: 1; min-width: 0; }
+.profile-simlog-title { font-size: 13px; font-weight: 500; color: var(--text); }
+.profile-simlog-meta {
+  font-size: 11px; color: var(--text-muted); margin-top: 2px;
+}
+.profile-simlog-stats {
+  display: flex; gap: 10px; flex-wrap: wrap; margin-top: 4px;
+  font-size: 11px; font-weight: 500;
+}
+.profile-simlog-right {
+  display: flex; flex-direction: column; align-items: flex-end;
+  gap: 4px; flex-shrink: 0;
+}
+.profile-simlog-time {
+  font-size: 11px; color: var(--text-muted); white-space: nowrap;
+}
+.profile-simlog-rerun {
+  font-size: 11px; font-weight: 600; color: var(--green-mid);
+  opacity: 0; transition: opacity var(--duration-fast); white-space: nowrap;
+}
+
 /* ── Security tips ── */
 .profile-tips {
   list-style: none; padding: 0; margin: 0;

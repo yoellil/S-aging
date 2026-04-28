@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { detectDisease, warmupSession } from "./detection";
 import { streamSimulation } from "./api";
+import { saveSimulationLog } from "./profileApi";
 import { supabase } from "./utils/supabase";
 import AuthPage from "./AuthPage";
 import ProfilePage from "./ProfilePage";
@@ -1116,6 +1117,7 @@ function SimulationPage({ config }) {
   const framesRef = useRef([]);
   const playRef = useRef(null);
   const cancelledRef = useRef(false);
+  const hasSavedRef = useRef(false);
 
   const isFW = disease === "fusarium_wilt";
   const diseaseName = isFW ? "Fusarium Wilt TR4" : "Black Sigatoka";
@@ -1123,6 +1125,7 @@ function SimulationPage({ config }) {
   // ── Stream simulation frames from FastAPI backend on mount ────────────────
   useEffect(() => {
     cancelledRef.current = false;
+    hasSavedRef.current = false;
     framesRef.current = [];
     setFrames([]);
     setTimeStep(0);
@@ -1137,7 +1140,24 @@ function SimulationPage({ config }) {
         setFrames([...framesRef.current]);
         setTimeStep(framesRef.current.length - 1); // auto-advance while streaming
       },
-      () => { if (!cancelledRef.current) setSimState("complete"); },
+      () => {
+        if (cancelledRef.current) return;
+        setSimState("complete");
+        const lastFrame = framesRef.current[framesRef.current.length - 1];
+        if (lastFrame && !hasSavedRef.current) {
+          hasSavedRef.current = true;
+          saveSimulationLog({
+            disease, temp, rh, density,
+            finalStats: lastFrame.stats,
+            months: framesRef.current.length,
+            imageData: imageData ?? null,
+            detections: detections ?? null,
+            maskGrid: maskGrid ?? null,
+            imgWidth: imgWidth ?? null,
+            imgHeight: imgHeight ?? null,
+          }).catch(() => {});
+        }
+      },
       (err) => {
         if (!cancelledRef.current) { setSimState("error"); setErrorMsg(err.message); }
       }
@@ -1888,7 +1908,7 @@ export default function SAgingApp() {
       {page === "upload" && <UploadPage onNavigate={navigate} setSimConfig={setSimConfig} />}
       {page === "simulation" && <SimulationPage config={simConfig} />}
       {page === "about" && <AboutPage />}
-      {page === "profile" && <ProfilePage auth={auth} onLogout={handleLogout} />}
+      {page === "profile" && <ProfilePage auth={auth} onLogout={handleLogout} onNavigate={navigate} setSimConfig={setSimConfig} />}
 
       <footer className="footer">
         <span>S-Aging · FEU Institute of Technology · 2026</span>

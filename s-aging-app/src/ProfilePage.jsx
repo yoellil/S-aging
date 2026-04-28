@@ -1,13 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
-  Shield, Clock, KeyRound, UserPen, Camera, Trash2, Save,
+  Shield, KeyRound, UserPen, Camera, Trash2, Save,
   LogIn, LogOut, Fingerprint, Mail, CalendarDays, Activity,
   RefreshCw,
 } from "lucide-react";
 import {
   getProfile, updateProfile, updateUsername, updatePassword,
-  uploadProfilePicture, deleteProfilePicture,
+  uploadProfilePicture, deleteProfilePicture, getSimulationLogs,
 } from "./profileApi";
 
 // ── Color tokens ────────────────────────────────────────────────────────────
@@ -97,7 +97,7 @@ function QuickStat({ icon: Icon, label, value, color, delay }) {
 // ══════════════════════════════════════════════════════════════════════════════
 //  PROFILE PAGE
 // ══════════════════════════════════════════════════════════════════════════════
-export default function ProfilePage({ auth, onLogout }) {
+export default function ProfilePage({ auth, onLogout, onNavigate, setSimConfig }) {
   // No tokens. Supabase client handles auth automatically via session in localStorage.
   const userId = auth?.session?.user?.id || null;
 
@@ -116,10 +116,12 @@ export default function ProfilePage({ auth, onLogout }) {
   const [saving, setSaving] = useState(null);
 
   // Activity logs + stats (no longer used — kept harmless for UI)
-  const [logs] = useState([]);
-  const [logCount] = useState(0);
   const [loginCount] = useState(0);
-  const [lastLogin] = useState(null);
+
+  // Simulation history
+  const [simLogs, setSimLogs] = useState([]);
+  const [simLogsLoading, setSimLogsLoading] = useState(true);
+  const [rerunningId, setRerunningId] = useState(null);
 
   const fileRef = useRef(null);
 
@@ -148,6 +150,14 @@ export default function ProfilePage({ auth, onLogout }) {
   }, [userId]);
 
   useEffect(() => { fetchProfile(); }, [fetchProfile]);
+
+  useEffect(() => {
+    if (!userId) return;
+    getSimulationLogs(30).then(res => {
+      setSimLogs(res.data || []);
+      setSimLogsLoading(false);
+    });
+  }, [userId]);
 
   // ── Handlers ──────────────────────────────────────────────────────────────
   const flash = (msg, type = "success") => setToast({ msg, type, key: Date.now() });
@@ -311,7 +321,7 @@ export default function ProfilePage({ auth, onLogout }) {
         <div className="profile-stats-row">
           <QuickStat icon={CalendarDays} label="Days active" value={memberDays} color={C.green400} delay={0.05} />
           <QuickStat icon={LogIn} label="Total logins" value={loginCount} color={C.teal600} delay={0.1} />
-          <QuickStat icon={Activity} label="Activity events" value={logCount} color={C.amber400} delay={0.15} />
+          <QuickStat icon={Activity} label="Simulations" value={simLogs.length} color={C.amber400} delay={0.15} />
           <QuickStat icon={Shield} label="Security level" value="Good" color={C.green600} delay={0.2} />
         </div>
 
@@ -386,7 +396,7 @@ export default function ProfilePage({ auth, onLogout }) {
                     { label: "Username", value: "@" + profile.username },
                     { label: "Member since", value: memberSince },
                     { label: "Last updated", value: profile.profile_updated_at ? _relativeTime(profile.profile_updated_at) : "Never" },
-                    { label: "Last login", value: lastLogin ? _relativeTime(lastLogin) : "—" },
+                    { label: "Last login", value: "—" },
                   ].map(({ label, value, mono }) => (
                     <div className="profile-detail-row" key={label}>
                       <span className="profile-detail-label">{label}</span>
@@ -397,34 +407,92 @@ export default function ProfilePage({ auth, onLogout }) {
               </div>
             </FadeIn>
 
-            {/* Recent activity */}
-            <FadeIn delay={0.15}>
+            {/* Simulation history */}
+            <FadeIn delay={0.2}>
               <div className="profile-card">
                 <div className="profile-card-header">
-                  <Clock size={15} />
-                  <span>Recent activity</span>
-                  {logCount > 0 && <span className="profile-card-badge">{logCount}</span>}
+                  <Activity size={15} />
+                  <span>Simulation history</span>
+                  {simLogs.length > 0 && <span className="profile-card-badge">{simLogs.length}</span>}
                 </div>
-                {logs.length === 0 ? (
-                  <div className="profile-hint" style={{ padding: "20px 0", textAlign: "center" }}>No recent activity</div>
+                {simLogsLoading ? (
+                  <div className="profile-hint" style={{ padding: "20px 0", textAlign: "center" }}>Loading…</div>
+                ) : simLogs.length === 0 ? (
+                  <div className="profile-hint" style={{ padding: "20px 0", textAlign: "center" }}>No simulations run yet</div>
                 ) : (
-                  <div className="profile-activity-list">
-                    {logs.slice(0, 10).map((log, i) => {
-                      const info = _actionInfo(log.action);
+                  <div className="profile-simlog-list">
+                    {simLogs.map((log, i) => {
+                      const isFW = log.disease === "fusarium_wilt";
+                      const diseaseName = isFW ? "Fusarium Wilt TR4" : "Black Sigatoka";
+                      const diseaseColor = isFW ? C.amber400 : C.teal600;
+                      const diseaseBg = isFW ? C.amber50 : C.teal50;
+                      const isRerunning = rerunningId === log.id;
+
+                      const handleRerun = async () => {
+                        if (rerunningId) return;
+                        setRerunningId(log.id);
+                        let imageData = null;
+                        if (log.image_url) {
+                          try {
+                            const res = await fetch(log.image_url);
+                            const blob = await res.blob();
+                            imageData = await new Promise((resolve) => {
+                              const reader = new FileReader();
+                              reader.onloadend = () => resolve(reader.result?.split(",")[1] ?? null);
+                              reader.readAsDataURL(blob);
+                            });
+                          } catch {
+                            // proceed without image
+                          }
+                        }
+                        setSimConfig?.({
+                          disease: log.disease,
+                          temp: Number(log.temp),
+                          rh: Number(log.rh),
+                          density: log.density,
+                          detections: log.detections ?? null,
+                          maskGrid: log.mask_grid ?? null,
+                          imgWidth: log.img_width ?? null,
+                          imgHeight: log.img_height ?? null,
+                          imageData,
+                        });
+                        setRerunningId(null);
+                        onNavigate?.("simulation");
+                      };
+
                       return (
                         <motion.div
-                          className="profile-activity-item"
-                          key={log.id || i}
+                          className={`profile-simlog-item${isRerunning ? " rerunning" : ""}`}
+                          key={log.id}
                           initial={{ opacity: 0, x: -8 }}
                           animate={{ opacity: 1, x: 0 }}
                           transition={{ delay: i * 0.03, duration: 0.3 }}
+                          onClick={handleRerun}
+                          title="Click to re-run this simulation"
                         >
-                          <div className="profile-activity-icon" style={{ background: info.bg, color: info.color }}>
-                            <info.icon size={12} />
+                          {log.image_url ? (
+                            <img src={log.image_url} alt="" className="profile-simlog-thumb" />
+                          ) : (
+                            <div className="profile-simlog-badge" style={{ background: diseaseBg, color: diseaseColor }}>
+                              {isFW ? "FW" : "BS"}
+                            </div>
+                          )}
+                          <div className="profile-simlog-body">
+                            <div className="profile-simlog-title">{diseaseName}</div>
+                            <div className="profile-simlog-meta">
+                              {log.temp}°C · {log.rh}% RH · {log.density} density · {log.months_simulated} mo
+                            </div>
+                            <div className="profile-simlog-stats">
+                              <span style={{ color: C.green600 }}>✓ {Number(log.final_healthy_pct).toFixed(1)}% healthy</span>
+                              <span style={{ color: C.amber400 }}>⚠ {Number(log.final_infected_pct).toFixed(1)}% infected</span>
+                              <span style={{ color: C.red400 }}>✕ {Number(log.final_necrotic_pct).toFixed(1)}% necrotic</span>
+                            </div>
                           </div>
-                          <div className="profile-activity-body">
-                            <span className="profile-activity-action">{info.label}</span>
-                            <span className="profile-activity-time">{_relativeTime(log.timestamp)}</span>
+                          <div className="profile-simlog-right">
+                            <div className="profile-simlog-time">{_relativeTime(log.created_at)}</div>
+                            <div className="profile-simlog-rerun">
+                              {isRerunning ? "Loading…" : "Re-run →"}
+                            </div>
                           </div>
                         </motion.div>
                       );
@@ -435,7 +503,7 @@ export default function ProfilePage({ auth, onLogout }) {
             </FadeIn>
 
             {/* Security tips */}
-            <FadeIn delay={0.2}>
+            <FadeIn delay={0.25}>
               <div className="profile-card profile-card-accent">
                 <div className="profile-card-header">
                   <Shield size={15} />
@@ -458,22 +526,6 @@ export default function ProfilePage({ auth, onLogout }) {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function _actionInfo(action) {
-  const map = {
-    user_login:             { label: "Logged in",             icon: LogIn,       color: C.green600, bg: C.green50 },
-    user_logout:            { label: "Logged out",            icon: LogOut,      color: C.gray600,  bg: C.gray100 },
-    user_registered:        { label: "Account created",       icon: Shield,      color: C.teal600,  bg: C.teal50 },
-    username_changed:       { label: "Username changed",      icon: UserPen,     color: C.amber400, bg: C.amber50 },
-    password_changed:       { label: "Password changed",      icon: KeyRound,    color: C.green600, bg: C.green50 },
-    password_change_failed: { label: "Password change failed",icon: KeyRound,    color: C.red400,   bg: C.red50 },
-    profile_updated:        { label: "Profile updated",       icon: UserPen,     color: C.green400, bg: C.green50 },
-    profile_picture_uploaded:{ label: "Picture uploaded",      icon: Camera,      color: C.teal600,  bg: C.teal50 },
-    profile_picture_deleted:{ label: "Picture removed",       icon: Trash2,      color: C.gray600,  bg: C.gray100 },
-    session_expired:        { label: "Session expired",       icon: Clock,       color: C.amber400, bg: C.amber50 },
-    failed_login_attempt:   { label: "Failed login",          icon: Shield,      color: C.red400,   bg: C.red50 },
-  };
-  return map[action] ?? { label: action.replace(/_/g, " "), icon: Activity, color: C.gray600, bg: C.gray100 };
-}
 
 function _relativeTime(iso) {
   if (!iso) return "";

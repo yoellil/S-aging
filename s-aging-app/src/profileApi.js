@@ -214,3 +214,74 @@ export async function deleteProfilePicture() {
 export async function getActivityLogs() {
   return { success: true, data: [], total: 0 };
 }
+
+function _base64ToBlob(base64) {
+  const mime = base64.startsWith('/9j/') ? 'image/jpeg'
+    : base64.startsWith('iVBOR') ? 'image/png'
+    : base64.startsWith('UklGR') ? 'image/webp'
+    : 'image/jpeg';
+  const bytes = atob(base64);
+  const arr = new Uint8Array(bytes.length);
+  for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+  return { blob: new Blob([arr], { type: mime }), mime };
+}
+
+/** Save a completed simulation run to the simulation_logs table. */
+export async function saveSimulationLog({ disease, temp, rh, density, finalStats, months, imageData, detections, maskGrid, imgWidth, imgHeight }) {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { success: false };
+
+  // Upload the analyzed image to storage
+  let image_url = null;
+  if (imageData) {
+    try {
+      const { blob, mime } = _base64ToBlob(imageData);
+      const ext = mime.split('/')[1];
+      const path = `${user.id}/${Date.now()}.${ext}`;
+      const { error: upErr } = await supabase.storage
+        .from('simulation-images')
+        .upload(path, blob, { contentType: mime, upsert: false });
+      if (!upErr) {
+        const { data: pub } = supabase.storage.from('simulation-images').getPublicUrl(path);
+        image_url = pub.publicUrl;
+      } else {
+        console.warn('[saveSimulationLog] image upload failed:', upErr.message);
+      }
+    } catch (e) {
+      console.warn('[saveSimulationLog] image upload error:', e);
+    }
+  }
+
+  const { error } = await supabase.from("simulation_logs").insert({
+    user_id: user.id,
+    disease, temp, rh, density,
+    final_infected_pct: finalStats?.infected_pct ?? 0,
+    final_necrotic_pct: finalStats?.necrotic_pct ?? 0,
+    final_healthy_pct: finalStats?.healthy_pct ?? 100,
+    months_simulated: months,
+    image_url,
+    detections: detections ?? null,
+    mask_grid: maskGrid ?? null,
+    img_width: imgWidth ?? null,
+    img_height: imgHeight ?? null,
+  });
+
+  if (error) { console.error("[saveSimulationLog]", error); return { success: false }; }
+  return { success: true };
+}
+
+/** Fetch the user's simulation history, newest first. */
+export async function getSimulationLogs(limit = 30) {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { success: false, data: [] };
+
+  const { data, error } = await supabase
+    .from("simulation_logs")
+    .select("id,disease,temp,rh,density,final_infected_pct,final_necrotic_pct,final_healthy_pct,months_simulated,image_url,img_width,img_height,created_at,detections,mask_grid")
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  if (error) { console.error("[getSimulationLogs]", error); return { success: false, data: [] }; }
+  return { success: true, data: data || [] };
+}
