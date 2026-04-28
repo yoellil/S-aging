@@ -9,7 +9,7 @@ import {
 import {
   getProfile, updateProfile, updateUsername, updatePassword,
   uploadProfilePicture, deleteProfilePicture, getSimulationLogs,
-  searchUsers, getPublicProfile,
+  searchUsers, getPublicProfile, getPublicSimulationLogs,
 } from "./profileApi";
 
 // ── Color tokens ────────────────────────────────────────────────────────────
@@ -123,7 +123,7 @@ export default function ProfilePage({ auth, onLogout, onNavigate, setSimConfig, 
   // Simulation history
   const [simLogs, setSimLogs] = useState([]);
   const [simLogsLoading, setSimLogsLoading] = useState(true);
-  const [rerunningId, setRerunningId] = useState(null);
+  const [selectedLog, setSelectedLog] = useState(null);
 
   // User search
   const [searchQuery, setSearchQuery] = useState("");
@@ -300,6 +300,17 @@ export default function ProfilePage({ auth, onLogout, onNavigate, setSimConfig, 
         </AnimatePresence>
 
         <AnimatePresence>
+          {selectedLog && (
+            <SimLogDetailModal
+              log={selectedLog}
+              onClose={() => setSelectedLog(null)}
+              setSimConfig={setSimConfig}
+              onNavigate={onNavigate}
+            />
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence>
           {settingsOpen && (
             <SettingsModal
               profile={profile}
@@ -383,7 +394,7 @@ export default function ProfilePage({ auth, onLogout, onNavigate, setSimConfig, 
               exit={{ opacity: 0, y: 16 }}
               transition={{ duration: 0.25 }}
             >
-              <PublicProfileView user={viewingUser} onBack={() => setViewingUser(null)} />
+              <PublicProfileView user={viewingUser} onBack={() => setViewingUser(null)} setSimConfig={setSimConfig} onNavigate={onNavigate} />
             </motion.div>
           )}
         </AnimatePresence>
@@ -546,49 +557,15 @@ export default function ProfilePage({ auth, onLogout, onNavigate, setSimConfig, 
                       const diseaseName = isFW ? "Fusarium Wilt TR4" : "Black Sigatoka";
                       const diseaseColor = isFW ? C.amber400 : C.teal600;
                       const diseaseBg = isFW ? C.amber50 : C.teal50;
-                      const isRerunning = rerunningId === log.id;
-
-                      const handleRerun = async () => {
-                        if (rerunningId) return;
-                        setRerunningId(log.id);
-                        let imageData = null;
-                        if (log.image_url) {
-                          try {
-                            const res = await fetch(log.image_url);
-                            const blob = await res.blob();
-                            imageData = await new Promise((resolve) => {
-                              const reader = new FileReader();
-                              reader.onloadend = () => resolve(reader.result?.split(",")[1] ?? null);
-                              reader.readAsDataURL(blob);
-                            });
-                          } catch {
-                            // proceed without image
-                          }
-                        }
-                        setSimConfig?.({
-                          disease: log.disease,
-                          temp: Number(log.temp),
-                          rh: Number(log.rh),
-                          density: log.density,
-                          detections: log.detections ?? null,
-                          maskGrid: log.mask_grid ?? null,
-                          imgWidth: log.img_width ?? null,
-                          imgHeight: log.img_height ?? null,
-                          imageData,
-                        });
-                        setRerunningId(null);
-                        onNavigate?.("simulation");
-                      };
-
                       return (
                         <motion.div
-                          className={`profile-simlog-item${isRerunning ? " rerunning" : ""}`}
+                          className="profile-simlog-item"
                           key={log.id}
                           initial={{ opacity: 0, x: -8 }}
                           animate={{ opacity: 1, x: 0 }}
                           transition={{ delay: i * 0.03, duration: 0.3 }}
-                          onClick={handleRerun}
-                          title="Click to re-run this simulation"
+                          onClick={() => setSelectedLog(log)}
+                          title="Click to view saved result"
                         >
                           {log.image_url ? (
                             <img src={log.image_url} alt="" className="profile-simlog-thumb" />
@@ -610,9 +587,7 @@ export default function ProfilePage({ auth, onLogout, onNavigate, setSimConfig, 
                           </div>
                           <div className="profile-simlog-right">
                             <div className="profile-simlog-time">{_relativeTime(log.created_at)}</div>
-                            <div className="profile-simlog-rerun">
-                              {isRerunning ? "Loading…" : "Re-run →"}
-                            </div>
+                            <div className="profile-simlog-rerun">View →</div>
                           </div>
                         </motion.div>
                       );
@@ -646,14 +621,19 @@ export default function ProfilePage({ auth, onLogout, onNavigate, setSimConfig, 
 }
 
 // ── Public profile view ───────────────────────────────────────────────────────
-function PublicProfileView({ user, onBack }) {
-  const [simCount, setSimCount] = useState(null);
+function PublicProfileView({ user, onBack, setSimConfig, onNavigate }) {
+  const [simLogs, setSimLogs] = useState([]);
+  const [logsLoading, setLogsLoading] = useState(false);
+  const [tryingId, setTryingId] = useState(null);
 
   useEffect(() => {
-    getPublicProfile(user.id).then(res => {
-      if (res.success) setSimCount(res.data.simulationCount);
+    if (!user.is_public) return;
+    setLogsLoading(true);
+    getPublicSimulationLogs(user.id).then(res => {
+      setSimLogs(res.data || []);
+      setLogsLoading(false);
     });
-  }, [user.id]);
+  }, [user.id, user.is_public]);
 
   const initials = (user.full_name || user.username || "U")
     .split(" ").map(w => w[0]).filter(Boolean).slice(0, 2).join("").toUpperCase();
@@ -662,12 +642,45 @@ function PublicProfileView({ user, onBack }) {
     ? new Date(user.created_at).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })
     : "—";
 
+  const memberDays = user.created_at
+    ? Math.floor((Date.now() - new Date(user.created_at).getTime()) / 86400000)
+    : 0;
+
+  const avgHealthy = simLogs.length
+    ? (simLogs.reduce((s, l) => s + Number(l.final_healthy_pct), 0) / simLogs.length).toFixed(1)
+    : null;
+
+  const fwCount = simLogs.filter(l => l.disease === "fusarium_wilt").length;
+  const topDisease = simLogs.length === 0 ? "—"
+    : fwCount > simLogs.length - fwCount ? "Fusarium Wilt" : "Black Sigatoka";
+
+  const handleTry = async (log) => {
+    if (tryingId) return;
+    setTryingId(log.id);
+    let imageData = null;
+    if (log.image_url) {
+      try {
+        const res = await fetch(log.image_url);
+        const blob = await res.blob();
+        imageData = await new Promise(resolve => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result?.split(",")[1] ?? null);
+          reader.readAsDataURL(blob);
+        });
+      } catch { /* proceed without image */ }
+    }
+    setSimConfig?.({ disease: log.disease, temp: Number(log.temp), rh: Number(log.rh), density: log.density, imageData });
+    setTryingId(null);
+    onNavigate?.("simulation");
+  };
+
   return (
     <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
       <button className="profile-back-btn" onClick={onBack}>
         <ArrowLeft size={15} /> Back to search
       </button>
 
+      {/* Header card */}
       <div className="profile-header-card" style={{ marginBottom: 20 }}>
         <div className="profile-header-bg" />
         <div className="profile-header-content">
@@ -679,20 +692,240 @@ function PublicProfileView({ user, onBack }) {
           </div>
           <div className="profile-header-info">
             <div className="profile-header-name">{user.full_name || user.username}</div>
-            <div className="profile-header-username">@{user.username}</div>
+            <div className="profile-header-username">
+              @{user.username}
+              {user.is_public
+                ? <span className="pub-badge pub-badge-public"><Globe size={9} /> Public</span>
+                : <span className="pub-badge pub-badge-private"><Lock size={9} /> Private</span>
+              }
+            </div>
             <div className="profile-header-meta">
               <span><CalendarDays size={11} /> Joined {memberSince}</span>
-              {simCount !== null && <span><Orbit size={11} /> {simCount} simulation{simCount !== 1 ? "s" : ""} run</span>}
+              {user.is_public && simLogs.length > 0 && <span><Orbit size={11} /> {simLogs.length} simulation{simLogs.length !== 1 ? "s" : ""}</span>}
             </div>
             {user.bio && <div className="profile-header-bio">{user.bio}</div>}
           </div>
         </div>
       </div>
 
-      <div className="profile-public-empty">
-        <Users size={32} style={{ opacity: 0.25, marginBottom: 10 }} />
-        <p>This user's simulation data is private.</p>
-      </div>
+      {user.is_public ? (<>
+        {/* Quick stats */}
+        {simLogs.length > 0 && (
+          <div className="profile-stats-row" style={{ marginBottom: 20 }}>
+            <FadeIn delay={0.05}>
+              <div className="profile-stat-card">
+                <div className="profile-stat-icon" style={{ background: C.amber400 + "18", color: C.amber400 }}><Activity size={16} /></div>
+                <div className="profile-stat-value">{simLogs.length}</div>
+                <div className="profile-stat-label">Simulations</div>
+              </div>
+            </FadeIn>
+            <FadeIn delay={0.1}>
+              <div className="profile-stat-card">
+                <div className="profile-stat-icon" style={{ background: C.green400 + "18", color: C.green400 }}><Shield size={16} /></div>
+                <div className="profile-stat-value">{avgHealthy}%</div>
+                <div className="profile-stat-label">Avg healthy</div>
+              </div>
+            </FadeIn>
+            <FadeIn delay={0.15}>
+              <div className="profile-stat-card">
+                <div className="profile-stat-icon" style={{ background: C.teal600 + "18", color: C.teal600 }}><Orbit size={16} /></div>
+                <div className="profile-stat-value" style={{ fontSize: 13 }}>{topDisease}</div>
+                <div className="profile-stat-label">Top disease</div>
+              </div>
+            </FadeIn>
+            <FadeIn delay={0.2}>
+              <div className="profile-stat-card">
+                <div className="profile-stat-icon" style={{ background: C.green600 + "18", color: C.green600 }}><CalendarDays size={16} /></div>
+                <div className="profile-stat-value">{memberDays}</div>
+                <div className="profile-stat-label">Days active</div>
+              </div>
+            </FadeIn>
+          </div>
+        )}
+
+        {/* Simulation history */}
+        <FadeIn delay={0.15}>
+          <div className="profile-card">
+            <div className="profile-card-header">
+              <Activity size={15} />
+              <span>Simulation history</span>
+              {simLogs.length > 0 && <span className="profile-card-badge">{simLogs.length}</span>}
+            </div>
+            {logsLoading ? (
+              <div className="profile-hint" style={{ padding: "20px 0", textAlign: "center" }}>Loading…</div>
+            ) : simLogs.length === 0 ? (
+              <div className="profile-hint" style={{ padding: "20px 0", textAlign: "center" }}>No simulations run yet.</div>
+            ) : (
+              <div className="profile-simlog-list">
+                {simLogs.map((log, i) => {
+                  const isFW = log.disease === "fusarium_wilt";
+                  const diseaseName = isFW ? "Fusarium Wilt TR4" : "Black Sigatoka";
+                  const diseaseColor = isFW ? C.amber400 : C.teal600;
+                  const diseaseBg = isFW ? C.amber50 : C.teal50;
+                  return (
+                    <motion.div
+                      key={log.id}
+                      className="profile-simlog-item"
+                      initial={{ opacity: 0, x: -8 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: i * 0.03, duration: 0.3 }}
+                    >
+                      {log.image_url
+                        ? <img src={log.image_url} alt="" className="profile-simlog-thumb" />
+                        : <div className="profile-simlog-badge" style={{ background: diseaseBg, color: diseaseColor }}>{isFW ? "FW" : "BS"}</div>
+                      }
+                      <div className="profile-simlog-body">
+                        <div className="profile-simlog-title">{diseaseName}</div>
+                        <div className="profile-simlog-meta">
+                          {log.temp}°C · {log.rh}% RH · {log.density} density · {log.months_simulated} mo
+                        </div>
+                        <div className="profile-simlog-stats">
+                          <span style={{ color: C.green600 }}>✓ {Number(log.final_healthy_pct).toFixed(1)}% healthy</span>
+                          <span style={{ color: C.amber400 }}>⚠ {Number(log.final_infected_pct).toFixed(1)}% infected</span>
+                          <span style={{ color: C.red400 }}>✕ {Number(log.final_necrotic_pct).toFixed(1)}% necrotic</span>
+                        </div>
+                      </div>
+                      <div className="profile-simlog-right">
+                        <div className="profile-simlog-time">{_relativeTime(log.created_at)}</div>
+                        <button
+                          className="profile-simlog-rerun"
+                          onClick={() => handleTry(log)}
+                          disabled={!!tryingId}
+                          style={{ cursor: tryingId ? "wait" : "pointer" }}
+                        >
+                          {tryingId === log.id ? "Loading…" : "Try →"}
+                        </button>
+                      </div>
+                    </motion.div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </FadeIn>
+      </>) : (
+        <div className="profile-public-empty">
+          <Lock size={32} style={{ opacity: 0.25, marginBottom: 10 }} />
+          <p>This user's profile is private.</p>
+        </div>
+      )}
+    </motion.div>
+  );
+}
+
+// ── Simulation log detail modal ───────────────────────────────────────────────
+function SimLogDetailModal({ log, onClose, setSimConfig, onNavigate }) {
+  const [rerunning, setRerunning] = useState(false);
+
+  const isFW = log.disease === "fusarium_wilt";
+  const diseaseName = isFW ? "Fusarium Wilt TR4" : "Black Sigatoka";
+  const diseaseColor = isFW ? C.amber400 : C.teal600;
+  const date = new Date(log.created_at).toLocaleString("en-US", {
+    month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit",
+  });
+
+  const healthy = Number(log.final_healthy_pct);
+  const infected = Number(log.final_infected_pct);
+  const necrotic = Number(log.final_necrotic_pct);
+
+  const handleRerun = async () => {
+    setRerunning(true);
+    let imageData = null;
+    if (log.image_url) {
+      try {
+        const res = await fetch(log.image_url);
+        const blob = await res.blob();
+        imageData = await new Promise(resolve => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result?.split(",")[1] ?? null);
+          reader.readAsDataURL(blob);
+        });
+      } catch { /* proceed without image */ }
+    }
+    setSimConfig?.({
+      disease: log.disease,
+      temp: Number(log.temp),
+      rh: Number(log.rh),
+      density: log.density,
+      detections: log.detections ?? null,
+      maskGrid: log.mask_grid ?? null,
+      imgWidth: log.img_width ?? null,
+      imgHeight: log.img_height ?? null,
+      imageData,
+    });
+    setRerunning(false);
+    onClose();
+    onNavigate?.("simulation");
+  };
+
+  return (
+    <motion.div className="settings-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }} onClick={onClose}>
+      <motion.div
+        className="settings-modal simlog-detail-modal"
+        initial={{ scale: 0.96, y: 12 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.96, y: 12 }}
+        transition={{ duration: 0.2 }} onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="settings-modal-header">
+          <div className="settings-modal-title" style={{ color: diseaseColor }}>
+            <Activity size={15} /> {diseaseName}
+          </div>
+          <button className="settings-close-btn" onClick={onClose}><X size={15} /></button>
+        </div>
+
+        {/* Saved image */}
+        {log.image_url && (
+          <div className="simlog-detail-img-wrap">
+            <img src={log.image_url} alt="Simulation result" className="simlog-detail-img" />
+          </div>
+        )}
+
+        {/* Stats bars */}
+        <div className="simlog-detail-bars">
+          {[
+            { label: "Healthy", pct: healthy, color: C.green600, bg: C.green50 },
+            { label: "Infected", pct: infected, color: C.amber400, bg: C.amber50 },
+            { label: "Necrotic", pct: necrotic, color: C.red400, bg: C.red50 },
+          ].map(({ label, pct, color, bg }) => (
+            <div key={label} className="simlog-detail-bar-row">
+              <span className="simlog-detail-bar-label" style={{ color }}>{label}</span>
+              <div className="simlog-detail-bar-track">
+                <div className="simlog-detail-bar-fill" style={{ width: `${pct}%`, background: color }} />
+              </div>
+              <span className="simlog-detail-bar-pct" style={{ color }}>{pct.toFixed(1)}%</span>
+            </div>
+          ))}
+        </div>
+
+        {/* Parameters */}
+        <div className="settings-section">
+          <div className="settings-section-label">Parameters</div>
+          {[
+            ["Disease", diseaseName],
+            ["Temperature", `${log.temp} °C`],
+            ["Humidity", `${log.rh}%`],
+            ["Density", log.density],
+            ["Duration", `${log.months_simulated} months`],
+            ["Recorded", date],
+          ].map(([k, v]) => (
+            <div className="settings-row" key={k} style={{ paddingTop: 6, paddingBottom: 6 }}>
+              <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{k}</span>
+              <span style={{ fontSize: 12, fontWeight: 500 }}>{v}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* Re-run */}
+        <div className="settings-section">
+          <button className="settings-save-btn" onClick={handleRerun} disabled={rerunning}>
+            <RefreshCw size={13} />
+            {rerunning ? "Preparing…" : "Run new simulation with these settings"}
+          </button>
+          <p style={{ fontSize: 11, color: "var(--text-muted)", textAlign: "center", marginTop: 8 }}>
+            Results will vary — disease spread is probabilistic.
+          </p>
+        </div>
+      </motion.div>
     </motion.div>
   );
 }

@@ -232,11 +232,23 @@ export async function searchUsers(query) {
     .from("profiles")
     .select("id, username, full_name, bio, profile_picture_url, created_at, is_public")
     .neq("id", user.id)
-    .eq("is_public", true)
     .or(`username.ilike.*${q}*,full_name.ilike.*${q}*`)
     .limit(20);
 
   if (error) { console.error("[searchUsers]", error); return { success: false, data: [] }; }
+  return { success: true, data: data || [] };
+}
+
+/** Get a public user's simulation logs (only if their profile is public). */
+export async function getPublicSimulationLogs(userId) {
+  const { data, error } = await supabase
+    .from("simulation_logs")
+    .select("id,disease,temp,rh,density,final_infected_pct,final_necrotic_pct,final_healthy_pct,months_simulated,image_url,created_at")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .limit(20);
+
+  if (error) { console.warn("[getPublicSimulationLogs]", error); return { success: false, data: [] }; }
   return { success: true, data: data || [] };
 }
 

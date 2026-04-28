@@ -1867,6 +1867,16 @@ textarea.profile-input { min-height: 72px; }
   overflow: hidden; text-overflow: ellipsis; max-width: 160px;
 }
 
+/* ── Public / private badge ── */
+.pub-badge {
+  display: inline-flex; align-items: center; gap: 3px;
+  font-size: 10px; font-weight: 600; letter-spacing: 0.3px;
+  border-radius: 20px; padding: 2px 7px; margin-left: 8px;
+  vertical-align: middle;
+}
+.pub-badge-public { background: rgba(99,153,34,0.18); color: #639922; }
+.pub-badge-private { background: rgba(136,135,128,0.18); color: #888780; }
+
 /* ── Back button ── */
 .profile-back-btn {
   display: inline-flex; align-items: center; gap: 6px;
@@ -2098,6 +2108,26 @@ textarea.profile-input { min-height: 72px; }
   transition: opacity var(--duration-fast);
 }
 .settings-save-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+/* Simulation log detail modal */
+.simlog-detail-modal { max-width: 520px; }
+.simlog-detail-img-wrap {
+  margin: 0 24px 4px;
+  border-radius: var(--radius-md); overflow: hidden;
+  border: 1px solid var(--color-border-secondary);
+  max-height: 260px; display: flex; align-items: center; justify-content: center;
+  background: #000;
+}
+.simlog-detail-img { width: 100%; height: 100%; object-fit: contain; display: block; max-height: 260px; }
+.simlog-detail-bars { padding: 16px 24px 0; display: flex; flex-direction: column; gap: 10px; }
+.simlog-detail-bar-row { display: flex; align-items: center; gap: 10px; }
+.simlog-detail-bar-label { font-size: 12px; font-weight: 500; width: 58px; }
+.simlog-detail-bar-track {
+  flex: 1; height: 8px; background: var(--color-border-secondary);
+  border-radius: 99px; overflow: hidden;
+}
+.simlog-detail-bar-fill { height: 100%; border-radius: 99px; transition: width 0.6s ease; }
+.simlog-detail-bar-pct { font-size: 12px; font-weight: 600; width: 44px; text-align: right; }
 
 /* Settings gear button in profile header */
 .profile-settings-btn {
