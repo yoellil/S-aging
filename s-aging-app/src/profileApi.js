@@ -48,15 +48,20 @@ export async function getProfile() {
   return { success: true, data: created };
 }
 
-/** Update the editable profile info (full_name / bio / phone). */
-export async function updateProfile({ full_name, bio, phone }) {
+/** Update the editable profile info (full_name / bio / phone / settings). */
+export async function updateProfile({ full_name, bio, phone, is_public, default_disease, default_temp, default_rh, default_density }) {
   const { data: { user }, error: userErr } = await supabase.auth.getUser();
   if (userErr || !user) return { success: false, message: "Not signed in." };
 
   const patch = { profile_updated_at: new Date().toISOString(), updated_at: new Date().toISOString() };
-  if (full_name !== undefined)   patch.full_name = full_name?.trim() || null;
-  if (bio !== undefined)         patch.bio = bio?.trim() || null;
-  if (phone !== undefined)       patch.phone = phone?.trim() || null;
+  if (full_name !== undefined)        patch.full_name = full_name?.trim() || null;
+  if (bio !== undefined)              patch.bio = bio?.trim() || null;
+  if (phone !== undefined)            patch.phone = phone?.trim() || null;
+  if (is_public !== undefined)        patch.is_public = is_public;
+  if (default_disease !== undefined)  patch.default_disease = default_disease;
+  if (default_temp !== undefined)     patch.default_temp = default_temp;
+  if (default_rh !== undefined)       patch.default_rh = default_rh;
+  if (default_density !== undefined)  patch.default_density = default_density;
 
   const { data, error } = await supabase
     .from("profiles")
@@ -213,6 +218,47 @@ export async function deleteProfilePicture() {
 /** Activity logs are unused now — return empty success so the UI keeps working. */
 export async function getActivityLogs() {
   return { success: true, data: [], total: 0 };
+}
+
+/** Search users by username or full name. Excludes the current user. */
+export async function searchUsers(query) {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { success: false, data: [] };
+
+  const q = query.trim();
+  if (!q) return { success: true, data: [] };
+
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("id, username, full_name, bio, profile_picture_url, created_at, is_public")
+    .neq("id", user.id)
+    .eq("is_public", true)
+    .or(`username.ilike.*${q}*,full_name.ilike.*${q}*`)
+    .limit(20);
+
+  if (error) { console.error("[searchUsers]", error); return { success: false, data: [] }; }
+  return { success: true, data: data || [] };
+}
+
+/** Get a specific user's public profile + their simulation count. */
+export async function getPublicProfile(userId) {
+  const [profileRes, countRes] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select("id, username, full_name, bio, profile_picture_url, created_at, is_public")
+      .eq("id", userId)
+      .maybeSingle(),
+    supabase
+      .from("simulation_logs")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userId),
+  ]);
+
+  if (profileRes.error || !profileRes.data) return { success: false };
+  return {
+    success: true,
+    data: { ...profileRes.data, simulationCount: countRes.count ?? 0 },
+  };
 }
 
 function _base64ToBlob(base64) {

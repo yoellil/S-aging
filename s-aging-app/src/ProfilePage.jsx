@@ -3,11 +3,13 @@ import { motion, AnimatePresence } from "motion/react";
 import {
   Shield, KeyRound, UserPen, Camera, Trash2, Save,
   LogIn, LogOut, Fingerprint, Mail, CalendarDays, Activity,
-  RefreshCw,
+  RefreshCw, Search, X, ArrowLeft, Users, Orbit,
+  Settings, Sun, Moon, Globe, Lock, Download, Check,
 } from "lucide-react";
 import {
   getProfile, updateProfile, updateUsername, updatePassword,
   uploadProfilePicture, deleteProfilePicture, getSimulationLogs,
+  searchUsers, getPublicProfile,
 } from "./profileApi";
 
 // ── Color tokens ────────────────────────────────────────────────────────────
@@ -97,7 +99,7 @@ function QuickStat({ icon: Icon, label, value, color, delay }) {
 // ══════════════════════════════════════════════════════════════════════════════
 //  PROFILE PAGE
 // ══════════════════════════════════════════════════════════════════════════════
-export default function ProfilePage({ auth, onLogout, onNavigate, setSimConfig }) {
+export default function ProfilePage({ auth, onLogout, onNavigate, setSimConfig, theme, setTheme }) {
   // No tokens. Supabase client handles auth automatically via session in localStorage.
   const userId = auth?.session?.user?.id || null;
 
@@ -115,13 +117,22 @@ export default function ProfilePage({ auth, onLogout, onNavigate, setSimConfig }
   const [newPassword, setNewPassword] = useState("");
   const [saving, setSaving] = useState(null);
 
-  // Activity logs + stats (no longer used — kept harmless for UI)
+  // Activity logs + stats
   const [loginCount] = useState(0);
 
   // Simulation history
   const [simLogs, setSimLogs] = useState([]);
   const [simLogsLoading, setSimLogsLoading] = useState(true);
   const [rerunningId, setRerunningId] = useState(null);
+
+  // User search
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [viewingUser, setViewingUser] = useState(null);
+
+  // Settings modal
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const fileRef = useRef(null);
 
@@ -158,6 +169,18 @@ export default function ProfilePage({ auth, onLogout, onNavigate, setSimConfig }
       setSimLogsLoading(false);
     });
   }, [userId]);
+
+  // ── Debounced user search ──────────────────────────────────────────────────
+  useEffect(() => {
+    if (!searchQuery.trim()) { setSearchResults([]); setSearchLoading(false); return; }
+    setSearchLoading(true);
+    const t = setTimeout(async () => {
+      const res = await searchUsers(searchQuery);
+      setSearchResults(res.data || []);
+      setSearchLoading(false);
+    }, 350);
+    return () => clearTimeout(t);
+  }, [searchQuery]);
 
   // ── Handlers ──────────────────────────────────────────────────────────────
   const flash = (msg, type = "success") => setToast({ msg, type, key: Date.now() });
@@ -276,6 +299,98 @@ export default function ProfilePage({ auth, onLogout, onNavigate, setSimConfig }
           {toast && <Toast key={toast.key} msg={toast.msg} type={toast.type} onDone={() => setToast(null)} />}
         </AnimatePresence>
 
+        <AnimatePresence>
+          {settingsOpen && (
+            <SettingsModal
+              profile={profile}
+              theme={theme}
+              setTheme={setTheme}
+              simLogs={simLogs}
+              setSimConfig={setSimConfig}
+              onClose={() => setSettingsOpen(false)}
+              onSaved={(updated) => {
+                setProfile(p => ({ ...p, ...updated }));
+                flash("Settings saved.");
+              }}
+            />
+          )}
+        </AnimatePresence>
+
+        {/* ═══════ USER SEARCH BAR ═══════ */}
+        <div className="profile-search-wrap">
+          <div className="profile-search-box">
+            <Search size={15} style={{ color: C.gray400, flexShrink: 0 }} />
+            <input
+              className="profile-search-input"
+              placeholder="Search users by name or username…"
+              value={searchQuery}
+              onChange={e => { setSearchQuery(e.target.value); setViewingUser(null); }}
+            />
+            {searchQuery && (
+              <button className="profile-search-clear" onClick={() => { setSearchQuery(""); setSearchResults([]); }}>
+                <X size={14} />
+              </button>
+            )}
+          </div>
+          <AnimatePresence>
+            {searchQuery && (
+              <motion.div
+                className="profile-search-results"
+                initial={{ opacity: 0, y: -6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                transition={{ duration: 0.15 }}
+              >
+                {searchLoading && (
+                  <div className="profile-search-empty">Searching…</div>
+                )}
+                {!searchLoading && searchResults.length === 0 && (
+                  <div className="profile-search-empty">No users found for "{searchQuery}"</div>
+                )}
+                {!searchLoading && searchResults.map(u => {
+                  const uInitials = (u.full_name || u.username || "U")
+                    .split(" ").map(w => w[0]).filter(Boolean).slice(0, 2).join("").toUpperCase();
+                  return (
+                    <button
+                      key={u.id}
+                      className="profile-search-result"
+                      onClick={() => { setViewingUser(u); setSearchQuery(""); setSearchResults([]); }}
+                    >
+                      {u.profile_picture_url
+                        ? <img src={u.profile_picture_url} className="profile-search-avatar" alt="" />
+                        : <div className="profile-search-avatar profile-search-avatar-initials">{uInitials}</div>
+                      }
+                      <div className="profile-search-info">
+                        <span className="profile-search-name">{u.full_name || u.username}</span>
+                        <span className="profile-search-username">@{u.username}</span>
+                      </div>
+                      {u.bio && <span className="profile-search-bio">{u.bio}</span>}
+                    </button>
+                  );
+                })}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
+        {/* ═══════ PUBLIC PROFILE VIEW ═══════ */}
+        <AnimatePresence mode="wait">
+          {viewingUser && (
+            <motion.div
+              key={viewingUser.id}
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 16 }}
+              transition={{ duration: 0.25 }}
+            >
+              <PublicProfileView user={viewingUser} onBack={() => setViewingUser(null)} />
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* ═══════ OWN PROFILE (hidden while viewing another user) ═══════ */}
+        {!viewingUser && (<>
+
         {/* ═══════ HEADER CARD ═══════ */}
         <FadeIn>
           <div className="profile-header-card">
@@ -310,9 +425,14 @@ export default function ProfilePage({ auth, onLogout, onNavigate, setSimConfig }
                 </div>
                 {profile.bio && <div className="profile-header-bio">{profile.bio}</div>}
               </div>
-              <button className="profile-header-logout" onClick={onLogout} title="Log out">
-                <LogOut size={13} /> Log out
-              </button>
+              <div className="profile-header-actions">
+                <button className="profile-settings-btn" onClick={() => setSettingsOpen(true)} title="Settings">
+                  <Settings size={13} /> Settings
+                </button>
+                <button className="profile-header-logout" onClick={onLogout} title="Log out">
+                  <LogOut size={13} /> Log out
+                </button>
+              </div>
             </div>
           </div>
         </FadeIn>
@@ -519,8 +639,213 @@ export default function ProfilePage({ auth, onLogout, onNavigate, setSimConfig }
             </FadeIn>
           </div>
         </div>
+        </>)}
       </div>
     </div>
+  );
+}
+
+// ── Public profile view ───────────────────────────────────────────────────────
+function PublicProfileView({ user, onBack }) {
+  const [simCount, setSimCount] = useState(null);
+
+  useEffect(() => {
+    getPublicProfile(user.id).then(res => {
+      if (res.success) setSimCount(res.data.simulationCount);
+    });
+  }, [user.id]);
+
+  const initials = (user.full_name || user.username || "U")
+    .split(" ").map(w => w[0]).filter(Boolean).slice(0, 2).join("").toUpperCase();
+
+  const memberSince = user.created_at
+    ? new Date(user.created_at).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })
+    : "—";
+
+  return (
+    <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
+      <button className="profile-back-btn" onClick={onBack}>
+        <ArrowLeft size={15} /> Back to search
+      </button>
+
+      <div className="profile-header-card" style={{ marginBottom: 20 }}>
+        <div className="profile-header-bg" />
+        <div className="profile-header-content">
+          <div className="profile-avatar-wrap" style={{ cursor: "default" }}>
+            {user.profile_picture_url
+              ? <img src={user.profile_picture_url} alt="Profile" className="profile-avatar-img" />
+              : <div className="profile-avatar-placeholder">{initials}</div>
+            }
+          </div>
+          <div className="profile-header-info">
+            <div className="profile-header-name">{user.full_name || user.username}</div>
+            <div className="profile-header-username">@{user.username}</div>
+            <div className="profile-header-meta">
+              <span><CalendarDays size={11} /> Joined {memberSince}</span>
+              {simCount !== null && <span><Orbit size={11} /> {simCount} simulation{simCount !== 1 ? "s" : ""} run</span>}
+            </div>
+            {user.bio && <div className="profile-header-bio">{user.bio}</div>}
+          </div>
+        </div>
+      </div>
+
+      <div className="profile-public-empty">
+        <Users size={32} style={{ opacity: 0.25, marginBottom: 10 }} />
+        <p>This user's simulation data is private.</p>
+      </div>
+    </motion.div>
+  );
+}
+
+// ── Settings Modal ───────────────────────────────────────────────────────────
+function SettingsModal({ profile, theme, setTheme, simLogs, setSimConfig, onClose, onSaved }) {
+  const [isPublic, setIsPublic] = useState(profile?.is_public ?? false);
+  const [defaultDisease, setDefaultDisease] = useState(profile?.default_disease ?? "black_sigatoka");
+  const [defaultTemp, setDefaultTemp] = useState(profile?.default_temp ?? 26);
+  const [defaultRh, setDefaultRh] = useState(profile?.default_rh ?? 85);
+  const [defaultDensity, setDefaultDensity] = useState(profile?.default_density ?? "medium");
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    setSaving(true);
+    const res = await updateProfile({ is_public: isPublic, default_disease: defaultDisease, default_temp: Number(defaultTemp), default_rh: Number(defaultRh), default_density: defaultDensity });
+    setSaving(false);
+    if (res.success) {
+      setSimConfig?.(prev => ({ ...prev, disease: defaultDisease, temp: Number(defaultTemp), rh: Number(defaultRh), density: defaultDensity }));
+      onSaved?.({ is_public: isPublic, default_disease: defaultDisease, default_temp: Number(defaultTemp), default_rh: Number(defaultRh), default_density: defaultDensity });
+      onClose();
+    }
+  };
+
+  const exportCsv = () => {
+    if (!simLogs?.length) return;
+    const headers = ["Date", "Disease", "Temp (°C)", "Humidity (%)", "Density", "Healthy (%)", "Infected (%)", "Necrotic (%)", "Months"];
+    const rows = simLogs.map(l => [
+      new Date(l.created_at).toLocaleDateString(),
+      l.disease === "fusarium_wilt" ? "Fusarium Wilt TR4" : "Black Sigatoka",
+      l.temp, l.rh, l.density,
+      Number(l.final_healthy_pct).toFixed(1),
+      Number(l.final_infected_pct).toFixed(1),
+      Number(l.final_necrotic_pct).toFixed(1),
+      l.months_simulated,
+    ]);
+    const csv = [headers, ...rows].map(r => r.join(",")).join("\n");
+    const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(new Blob([csv], { type: "text/csv" })), download: "s-aging-simulations.csv" });
+    a.click();
+  };
+
+  return (
+    <motion.div className="settings-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }} onClick={onClose}>
+      <motion.div className="settings-modal" initial={{ scale: 0.96, y: 12 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.96, y: 12 }} transition={{ duration: 0.2 }} onClick={e => e.stopPropagation()}>
+
+        {/* Header */}
+        <div className="settings-modal-header">
+          <div className="settings-modal-title"><Settings size={15} /> Settings</div>
+          <button className="settings-close-btn" onClick={onClose}><X size={15} /></button>
+        </div>
+
+        {/* Appearance */}
+        <div className="settings-section">
+          <div className="settings-section-label">Appearance</div>
+          <div className="settings-row">
+            <div>
+              <div className="settings-row-label">Theme</div>
+              <div className="settings-row-desc">Choose how S-Aging looks for you.</div>
+            </div>
+            <div className="theme-btn-group">
+              <button className={`theme-btn${theme === "light" ? " active" : ""}`} onClick={() => setTheme("light")}>
+                <Sun size={12} /> Light
+              </button>
+              <button className={`theme-btn${theme === "dark" ? " active" : ""}`} onClick={() => setTheme("dark")}>
+                <Moon size={12} /> Dark
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Privacy */}
+        <div className="settings-section">
+          <div className="settings-section-label">Privacy</div>
+          <div className="settings-row">
+            <div>
+              <div className="settings-row-label" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                {isPublic ? <Globe size={13} /> : <Lock size={13} />}
+                {isPublic ? "Public profile" : "Private profile"}
+              </div>
+              <div className="settings-row-desc">
+                {isPublic
+                  ? "Other users can find you in search and view your profile."
+                  : "You are hidden from search. No one can view your profile."}
+              </div>
+            </div>
+            <div className="settings-toggle" onClick={() => setIsPublic(v => !v)}>
+              <div className={`settings-toggle-track${isPublic ? " on" : ""}`}>
+                <div className="settings-toggle-thumb" />
+              </div>
+              <span className="settings-toggle-label">{isPublic ? "On" : "Off"}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Simulation defaults */}
+        <div className="settings-section">
+          <div className="settings-section-label">Simulation Defaults</div>
+          <div className="settings-row">
+            <div className="settings-row-label">Disease</div>
+            <select className="settings-select" value={defaultDisease} onChange={e => setDefaultDisease(e.target.value)}>
+              <option value="black_sigatoka">Black Sigatoka</option>
+              <option value="fusarium_wilt">Fusarium Wilt TR4</option>
+            </select>
+          </div>
+          <div className="settings-row">
+            <div>
+              <div className="settings-row-label">Temperature</div>
+              <div className="settings-row-desc">Optimal range: 20–35 °C</div>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <input className="settings-num-input" type="number" min={15} max={40} value={defaultTemp} onChange={e => setDefaultTemp(e.target.value)} />
+              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>°C</span>
+            </div>
+          </div>
+          <div className="settings-row">
+            <div>
+              <div className="settings-row-label">Humidity</div>
+              <div className="settings-row-desc">Optimal range: 60–100 %</div>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <input className="settings-num-input" type="number" min={40} max={100} value={defaultRh} onChange={e => setDefaultRh(e.target.value)} />
+              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>%</span>
+            </div>
+          </div>
+          <div className="settings-row">
+            <div className="settings-row-label">Plantation density</div>
+            <select className="settings-select" value={defaultDensity} onChange={e => setDefaultDensity(e.target.value)}>
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Data */}
+        <div className="settings-section">
+          <div className="settings-section-label">Data</div>
+          <button className="settings-export-btn" onClick={exportCsv} disabled={!simLogs?.length}>
+            <Download size={13} />
+            {simLogs?.length ? `Export ${simLogs.length} simulation${simLogs.length !== 1 ? "s" : ""} as CSV` : "No simulations to export"}
+          </button>
+        </div>
+
+        {/* Save */}
+        <div className="settings-section">
+          <button className="settings-save-btn" onClick={handleSave} disabled={saving}>
+            <Check size={14} />
+            {saving ? "Saving…" : "Save settings"}
+          </button>
+        </div>
+
+      </motion.div>
+    </motion.div>
   );
 }
 

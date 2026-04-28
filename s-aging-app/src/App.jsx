@@ -1726,6 +1726,12 @@ export default function SAgingApp() {
   const [page, setPage] = useState("home");
   const [simConfig, setSimConfig] = useState({ disease: "black_sigatoka", temp: 26, rh: 85, density: "medium", detections: null, maskGrid: null });
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [theme, setTheme] = useState(() => localStorage.getItem("saging-theme") || "light");
+
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+    localStorage.setItem("saging-theme", theme);
+  }, [theme]);
 
   // ── Auth state ─────────────────────────────────────────────────────────
   // Single credential: Supabase JWT (session.access_token). Auth-service validates it on each request.
@@ -1908,7 +1914,7 @@ export default function SAgingApp() {
       {page === "upload" && <UploadPage onNavigate={navigate} setSimConfig={setSimConfig} />}
       {page === "simulation" && <SimulationPage config={simConfig} />}
       {page === "about" && <AboutPage />}
-      {page === "profile" && <ProfilePage auth={auth} onLogout={handleLogout} onNavigate={navigate} setSimConfig={setSimConfig} />}
+      {page === "profile" && <ProfilePage auth={auth} onLogout={handleLogout} onNavigate={navigate} setSimConfig={setSimConfig} theme={theme} setTheme={setTheme} />}
 
       <footer className="footer">
         <span>S-Aging · FEU Institute of Technology · 2026</span>
