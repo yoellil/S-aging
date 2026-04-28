@@ -624,7 +624,7 @@ export default function ProfilePage({ auth, onLogout, onNavigate, setSimConfig, 
 function PublicProfileView({ user, onBack, setSimConfig, onNavigate }) {
   const [simLogs, setSimLogs] = useState([]);
   const [logsLoading, setLogsLoading] = useState(false);
-  const [tryingId, setTryingId] = useState(null);
+  const [selectedLog, setSelectedLog] = useState(null);
 
   useEffect(() => {
     if (!user.is_public) return;
@@ -654,28 +654,19 @@ function PublicProfileView({ user, onBack, setSimConfig, onNavigate }) {
   const topDisease = simLogs.length === 0 ? "—"
     : fwCount > simLogs.length - fwCount ? "Fusarium Wilt" : "Black Sigatoka";
 
-  const handleTry = async (log) => {
-    if (tryingId) return;
-    setTryingId(log.id);
-    let imageData = null;
-    if (log.image_url) {
-      try {
-        const res = await fetch(log.image_url);
-        const blob = await res.blob();
-        imageData = await new Promise(resolve => {
-          const reader = new FileReader();
-          reader.onloadend = () => resolve(reader.result?.split(",")[1] ?? null);
-          reader.readAsDataURL(blob);
-        });
-      } catch { /* proceed without image */ }
-    }
-    setSimConfig?.({ disease: log.disease, temp: Number(log.temp), rh: Number(log.rh), density: log.density, imageData });
-    setTryingId(null);
-    onNavigate?.("simulation");
-  };
-
   return (
     <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
+      <AnimatePresence>
+        {selectedLog && (
+          <SimLogDetailModal
+            log={selectedLog}
+            onClose={() => setSelectedLog(null)}
+            setSimConfig={setSimConfig}
+            onNavigate={onNavigate}
+            actionLabel="Try these settings →"
+          />
+        )}
+      </AnimatePresence>
       <button className="profile-back-btn" onClick={onBack}>
         <ArrowLeft size={15} /> Back to search
       </button>
@@ -769,6 +760,8 @@ function PublicProfileView({ user, onBack, setSimConfig, onNavigate }) {
                       initial={{ opacity: 0, x: -8 }}
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ delay: i * 0.03, duration: 0.3 }}
+                      onClick={() => setSelectedLog(log)}
+                      title="Click to view result"
                     >
                       {log.image_url
                         ? <img src={log.image_url} alt="" className="profile-simlog-thumb" />
@@ -787,14 +780,7 @@ function PublicProfileView({ user, onBack, setSimConfig, onNavigate }) {
                       </div>
                       <div className="profile-simlog-right">
                         <div className="profile-simlog-time">{_relativeTime(log.created_at)}</div>
-                        <button
-                          className="profile-simlog-rerun"
-                          onClick={() => handleTry(log)}
-                          disabled={!!tryingId}
-                          style={{ cursor: tryingId ? "wait" : "pointer" }}
-                        >
-                          {tryingId === log.id ? "Loading…" : "Try →"}
-                        </button>
+                        <div className="profile-simlog-rerun">View →</div>
                       </div>
                     </motion.div>
                   );
@@ -814,7 +800,7 @@ function PublicProfileView({ user, onBack, setSimConfig, onNavigate }) {
 }
 
 // ── Simulation log detail modal ───────────────────────────────────────────────
-function SimLogDetailModal({ log, onClose, setSimConfig, onNavigate }) {
+function SimLogDetailModal({ log, onClose, setSimConfig, onNavigate, actionLabel }) {
   const [rerunning, setRerunning] = useState(false);
 
   const isFW = log.disease === "fusarium_wilt";
@@ -919,7 +905,7 @@ function SimLogDetailModal({ log, onClose, setSimConfig, onNavigate }) {
         <div className="settings-section">
           <button className="settings-save-btn" onClick={handleRerun} disabled={rerunning}>
             <RefreshCw size={13} />
-            {rerunning ? "Preparing…" : "Run new simulation with these settings"}
+            {rerunning ? "Preparing…" : (actionLabel || "Run new simulation with these settings")}
           </button>
           <p style={{ fontSize: 11, color: "var(--text-muted)", textAlign: "center", marginTop: 8 }}>
             Results will vary — disease spread is probabilistic.

@@ -32,3 +32,12 @@ npm-debug.log*
 
 # OS
 Thumbs.db
+
+# Claude Code / AI tool files
+.agents/
+.claude/
+.mcp.json
+skills-lock.json
+
+# Supabase SQL setup scripts (local use only)
+supabase_*.sql
