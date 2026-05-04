@@ -7,14 +7,17 @@ import {
   TestTubes, Sparkles, Atom, MoveRight, LoaderCircle, DoorOpen,
   Fingerprint, Leaf, FlaskConical, BookOpen, Users, BarChart3,
   CheckCircle2, Image as ImageIcon, Maximize2, Sun, Menu,
-  LoaderCircle as Loader,
+  LoaderCircle as Loader, ExternalLink,
 } from "lucide-react";
+import Antigravity from "./Antigravity";
+import CurvedLoop from "./CurvedLoop";
 import { detectDisease, warmupSession } from "./detection";
 import { streamSimulation } from "./api";
 import { saveSimulationLog } from "./profileApi";
 import { supabase } from "./utils/supabase";
 import AuthPage from "./AuthPage";
 import ProfilePage from "./ProfilePage";
+
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
@@ -274,14 +277,14 @@ function HomePage({ onNavigate }) {
         <div className="hero-side-deco hero-side-deco-left" aria-hidden="true">
           <svg viewBox="0 0 200 360" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path d="M40 60 C 60 20, 140 30, 160 80 C 175 130, 130 200, 90 230 C 60 250, 30 240, 30 200 C 30 150, 25 100, 40 60 Z"
-              fill="url(#leafGradL)" opacity="0.55"/>
-            <path d="M90 90 C 100 130, 95 180, 80 220" stroke="#3B6D11" strokeWidth="1.2" opacity="0.4" strokeLinecap="round"/>
+              fill="url(#leafGradL)" opacity="0.55" />
+            <path d="M90 90 C 100 130, 95 180, 80 220" stroke="#3B6D11" strokeWidth="1.2" opacity="0.4" strokeLinecap="round" />
             {[80, 110, 140, 170, 200].map((y, i) => (
-              <path key={i} d={`M90 ${y} L ${50 + (i%2)*8} ${y - 10}`} stroke="#3B6D11" strokeWidth="0.8" opacity="0.3"/>
+              <path key={i} d={`M90 ${y} L ${50 + (i % 2) * 8} ${y - 10}`} stroke="#3B6D11" strokeWidth="0.8" opacity="0.3" />
             ))}
             <defs>
               <linearGradient id="leafGradL" x1="0" y1="0" x2="200" y2="360" gradientUnits="userSpaceOnUse">
-                <stop offset="0" stopColor="#97C459"/><stop offset="1" stopColor="#1D9E75"/>
+                <stop offset="0" stopColor="#97C459" /><stop offset="1" stopColor="#1D9E75" />
               </linearGradient>
             </defs>
           </svg>
@@ -289,14 +292,14 @@ function HomePage({ onNavigate }) {
         <div className="hero-side-deco hero-side-deco-right" aria-hidden="true">
           <svg viewBox="0 0 200 360" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path d="M40 60 C 60 20, 140 30, 160 80 C 175 130, 130 200, 90 230 C 60 250, 30 240, 30 200 C 30 150, 25 100, 40 60 Z"
-              fill="url(#leafGradR)" opacity="0.5"/>
-            <path d="M90 90 C 100 130, 95 180, 80 220" stroke="#0F6E56" strokeWidth="1.2" opacity="0.4" strokeLinecap="round"/>
+              fill="url(#leafGradR)" opacity="0.5" />
+            <path d="M90 90 C 100 130, 95 180, 80 220" stroke="#0F6E56" strokeWidth="1.2" opacity="0.4" strokeLinecap="round" />
             {[80, 110, 140, 170, 200].map((y, i) => (
-              <path key={i} d={`M90 ${y} L ${130 + (i%2)*8} ${y - 10}`} stroke="#0F6E56" strokeWidth="0.8" opacity="0.3"/>
+              <path key={i} d={`M90 ${y} L ${130 + (i % 2) * 8} ${y - 10}`} stroke="#0F6E56" strokeWidth="0.8" opacity="0.3" />
             ))}
             <defs>
               <linearGradient id="leafGradR" x1="200" y1="0" x2="0" y2="360" gradientUnits="userSpaceOnUse">
-                <stop offset="0" stopColor="#5DCAA5"/><stop offset="1" stopColor="#639922"/>
+                <stop offset="0" stopColor="#5DCAA5" /><stop offset="1" stopColor="#639922" />
               </linearGradient>
             </defs>
           </svg>
@@ -334,7 +337,7 @@ function HomePage({ onNavigate }) {
         </motion.h1>
         <motion.p
           className="hero-subtitle"
-          initial={{ opacity: 0, y: 12 }}
+          initial={{ opacity: 0, y: 15 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2, duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
         >
@@ -623,6 +626,13 @@ function HomePage({ onNavigate }) {
           </div>
         </div>
       </div>
+      <CurvedLoop
+        marqueeText="SCAN · YOUR · LEAF · TODAY! · FOR · ECONOMY · AND · FOR · SCIENCE! · "
+        speed={1.2}
+        curveAmount={60}
+        direction="left"
+        className="home-marquee-text"
+      />
     </div>
   );
 }
@@ -732,7 +742,26 @@ function UploadPage({ onNavigate, setSimConfig }) {
         <div className="page-title">Analyze a banana leaf</div>
         <div className="page-subtitle">
           Upload a photo of a diseased leaf or select a demo sample to begin simulation.
+
+          {/* ── Supported conditions strip ── */}
+          <div className="upload-conditions-strip">
+            <div className="upload-conditions-label">Detectable conditions</div>
+            <div className="upload-conditions-chips">
+              {[
+                { name: "Black Sigatoka", color: "#639922", bg: "#EAF3DE" },
+                { name: "Fusarium Wilt TR4", color: "#854F0B", bg: "#FAEEDA" },
+                { name: "Healthy leaf", color: "#0F6E56", bg: "#E1F5EE" },
+              ].map(({ name, color, bg }) => (
+                <span key={name} className="upload-condition-chip" style={{ background: bg, color, borderColor: color + "40" }}>
+                  <span className="upload-condition-dot" style={{ background: color }} />
+                  {name}
+                </span>
+              ))}
+            </div>
+          </div>
         </div>
+
+
 
         {/* Hidden file input */}
         <input
@@ -904,22 +933,6 @@ function UploadPage({ onNavigate, setSimConfig }) {
           </div>
         </div>
 
-        {/* ── Supported conditions strip ── */}
-        <div className="upload-conditions-strip">
-          <div className="upload-conditions-label">Detectable conditions</div>
-          <div className="upload-conditions-chips">
-            {[
-              { name: "Black Sigatoka", color: "#639922", bg: "#EAF3DE" },
-              { name: "Fusarium Wilt TR4", color: "#854F0B", bg: "#FAEEDA" },
-              { name: "Healthy leaf", color: "#0F6E56", bg: "#E1F5EE" },
-            ].map(({ name, color, bg }) => (
-              <span key={name} className="upload-condition-chip" style={{ background: bg, color, borderColor: color + "40" }}>
-                <span className="upload-condition-dot" style={{ background: color }} />
-                {name}
-              </span>
-            ))}
-          </div>
-        </div>
       </div>
     </div>
   );
@@ -951,7 +964,7 @@ function LeafViewer3D({ frame, disease }) {
     if (baseImg?.complete && baseImg.naturalWidth > 0)
       ctx.drawImage(baseImg, 0, 0, _TEX, _TEX);
 
-    const gridU8      = typeof gridData      === "string" ? decodeB64(gridData)      : gridData;
+    const gridU8 = typeof gridData === "string" ? decodeB64(gridData) : gridData;
     const intensityU8 = typeof intensityData === "string" ? decodeB64(intensityData) : intensityData;
     const cellW = 0.5 * _TEX / _LEAF_COLS; // ~1.6 px
     const cellH = _TEX / _LEAF_ROWS;       // ~5.12 px
@@ -1046,10 +1059,10 @@ function LeafViewer3D({ frame, disease }) {
       });
       scene.add(gltf.scene);
 
-      const box    = new THREE.Box3().setFromObject(gltf.scene);
+      const box = new THREE.Box3().setFromObject(gltf.scene);
       const center = box.getCenter(new THREE.Vector3());
-      const size   = box.getSize(new THREE.Vector3());
-      const dist   = Math.max(size.x, size.y) * 1.7;
+      const size = box.getSize(new THREE.Vector3());
+      const dist = Math.max(size.x, size.y) * 1.7;
       camera.position.set(center.x, center.y, center.z + dist);
       camera.lookAt(center);
       controls.target.copy(center);
@@ -1155,7 +1168,7 @@ function SimulationPage({ config }) {
             maskGrid: maskGrid ?? null,
             imgWidth: imgWidth ?? null,
             imgHeight: imgHeight ?? null,
-          }).catch(() => {});
+          }).catch(() => { });
         }
       },
       (err) => {
@@ -1253,19 +1266,7 @@ function SimulationPage({ config }) {
               )}
             </div>
           </div>
-          <div className="sim-header-right">
-            <button
-              className="play-btn"
-              disabled={simState !== "complete"}
-              onClick={() => {
-                if (timeStep >= frames.length - 1) setTimeStep(0);
-                setPlaying(p => !p);
-              }}
-            >
-              {playing ? <Pause size={12} /> : <Play size={12} />}
-              {playing ? "Pause" : "Play"}
-            </button>
-          </div>
+          <div className="sim-header-right" />
         </div>
 
         <div className="sim-grid">
@@ -1276,6 +1277,18 @@ function SimulationPage({ config }) {
                 <button key={t} className={`tab ${activeTab === t ? "active" : ""}`}
                   onClick={() => setActiveTab(t)}>{label}</button>
               ))}
+              <button
+                className="play-btn"
+                style={{ marginLeft: "auto" }}
+                disabled={simState !== "complete"}
+                onClick={() => {
+                  if (timeStep >= frames.length - 1) setTimeStep(0);
+                  setPlaying(p => !p);
+                }}
+              >
+                {playing ? <Pause size={12} /> : <Play size={12} />}
+                {playing ? "Pause" : "Play"}
+              </button>
             </div>
 
             <div className="sim-viewer">
@@ -1568,6 +1581,7 @@ function SimulationPage({ config }) {
   );
 }
 
+
 // ══════════════════════════════════════════════════════════════════════════════
 //  ABOUT PAGE
 // ══════════════════════════════════════════════════════════════════════════════
@@ -1580,9 +1594,9 @@ function AboutPage() {
         <div className="about-metrics-banner">
           {[
             { icon: ScanSearch, value: "91.4%", label: "Mask mAP@50", sub: "YOLOv11-seg on test set" },
-            { icon: BarChart3,  value: "30 mo", label: "Disease simulation", sub: "Months modelled per run" },
-            { icon: FlaskConical, value: "2",   label: "Disease models", sub: "Black Sigatoka + Fusarium" },
-            { icon: Users,     value: "4",      label: "Research team", sub: "BS Computer Science · FEU" },
+            { icon: BarChart3, value: "30 mo", label: "Disease simulation", sub: "Months modelled per run" },
+            { icon: FlaskConical, value: "2", label: "Disease models", sub: "Black Sigatoka + Fusarium" },
+            { icon: Users, value: "4", label: "Research team", sub: "BS Computer Science · FEU" },
           ].map(({ icon: Icon, value, label, sub }, i) => (
             <motion.div
               className="about-metric-card"
@@ -1600,23 +1614,6 @@ function AboutPage() {
           ))}
         </div>
 
-        <FadeIn>
-          <div className="about-section">
-            <h3>About S-Aging</h3>
-            <p>
-              S-Aging is a computational framework developed as an interactive educational tool for
-              agricultural students and banana farmers. It integrates YOLOv11 instance segmentation
-              with Stochastic Cellular Automata to simulate the 3D spatio-temporal progression of
-              banana diseases.
-            </p>
-            <p>
-              The system targets two primary pathogens affecting Cavendish bananas in the Philippines:
-              Fusarium Wilt TR4 and Black Sigatoka — diseases responsible for significant yield losses
-              and rising production costs across Mindanao's 82,000+ dedicated cultivation hectares.
-            </p>
-          </div>
-        </FadeIn>
-
         <FadeIn delay={0.05}>
           <div className="about-section">
             <h3>Technology stack</h3>
@@ -1629,16 +1626,38 @@ function AboutPage() {
           </div>
         </FadeIn>
 
+
+        <FadeIn delay={0.08}>
+          <div className="about-section about-team-banner">
+            <img src="/Nautilizers-banner.png" alt="Nautilizers banner" className="about-team-banner-img" />
+            <div className="about-team-banner-row">
+              <img src="/Nautilizers.png" alt="Nautilizers" className="about-team-logo" />
+              <div className="about-team-intro">
+                <h3>Nautilizers</h3>
+                <p>
+                  Nautilizers is a student research group from FEU Institute of Technology composed of
+                  four BS Computer Science students dedicated to building technology-driven solutions for
+                  real-world agricultural challenges. S-Aging is the group's undergraduate thesis project,
+                  combining machine learning and simulation to address banana leaf disease spread in
+                  Mindanao's Cavendish farming communities.
+                </p>
+              </div>
+            </div>
+          </div>
+        </FadeIn>
+
+
         <FadeIn delay={0.1}>
           <div className="about-section">
             <h3>Research team</h3>
             <div className="team-grid">
               {[
-                { name: "Jimiel D. Balitayo", role: "BS Computer Science" },
-                { name: "Darryl B. Baranda", role: "BS Computer Science" },
-                { name: "Yoel Dwayne G. Reyes", role: "BS Computer Science" },
-                { name: "Justine Gabriel P. Rodriguez", role: "BS Computer Science" },
-              ].map(({ name, role }) => {
+                { name: "Justine Gabriel P. Rodriguez", role: "BS Computer Science", focus: "Project Manager", avatar: "/avatar-justine.png", linkedin: "https://www.linkedin.com/in/justine-gabriel-rodriguez/" },
+                { name: "Jimiel D. Balitayo", role: "BS Computer Science", focus: "Researcher & Front-end", avatar: "/avatar-jimiel.png", linkedin: "https://www.linkedin.com/in/jimiel-balitayo/" },
+                { name: "Darryl B. Baranda", role: "BS Computer Science", focus: "Researcher & Quality Testing", avatar: "/avatar-darryl.png", linkedin: "https://www.linkedin.com/in/darryl-baranda/" },
+                { name: "Yoel Dwayne G. Reyes", role: "BS Computer Science", focus: "Main Programmer, ML, & UI/UX", avatar: "/avatar-yoel.png", linkedin: "https://www.linkedin.com/in/yoel-dwayne-reyes-9720b0308/" },
+
+              ].map(({ name, role, focus, avatar, linkedin }) => {
                 const initials = name.split(" ").map(p => p[0]).filter((_, i, a) => i === 0 || i === a.length - 1).join("");
                 return (
                   <motion.div
@@ -1649,19 +1668,35 @@ function AboutPage() {
                     viewport={{ once: true, margin: "-30px" }}
                     transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
                   >
-                    <div className="team-avatar">{initials}</div>
+                    <div className="team-avatar">
+                      <img src={avatar} alt={name} onError={e => { e.currentTarget.style.display = "none"; e.currentTarget.nextSibling.style.display = "flex"; }} />
+                      <span style={{ display: "none" }}>{initials}</span>
+                    </div>
                     <div className="team-name">{name}</div>
                     <div className="team-role">{role}</div>
+                    <div className="team-focus">{focus}</div>
+                    <a
+                      className="team-linkedin"
+                      href={linkedin}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title={`${name} on LinkedIn`}
+                      onClick={e => { if (linkedin === "#") e.preventDefault(); }}
+                    >
+                      <ExternalLink size={13} />
+                      LinkedIn
+                    </a>
                   </motion.div>
                 );
               })}
             </div>
-            <div style={{ marginTop: 16, fontSize: 13, color: "var(--text-muted)" }}>
-              Thesis adviser: <strong style={{ color: "var(--text)" }}>Mr. Anthony D. Aquino</strong>
+            <div style={{ marginTop: 16, fontSize: 13, color: "var(--text-muted)", textAlign: "center" }}>
+              Thesis Mentor: <strong style={{ color: "var(--text)" }}>Mr. Anthony D. Aquino</strong>
               &nbsp;·&nbsp; FEU Institute of Technology, March 2026
             </div>
           </div>
         </FadeIn>
+
 
         <FadeIn delay={0.15}>
           <div className="about-section">
@@ -1800,10 +1835,7 @@ export default function SAgingApp() {
       <nav className="nav">
         <div className="nav-logo" onClick={() => navigate("home")}>
           <div className="nav-logo-mark">
-            <svg viewBox="0 0 20 20" fill="none" stroke="#fff" strokeWidth="1.8">
-              <path d="M10 3C6 3 4 7 4 10c0 4 3 7 6 7s6-3 6-7c0-3-2-7-6-7z" />
-              <path d="M10 3v14M4 10h12" />
-            </svg>
+            <img src="/Nautilizers.png" alt="Nautilizers" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
           </div>
           <span className="nav-logo-text">S-Aging</span>
         </div>
@@ -1863,10 +1895,7 @@ export default function SAgingApp() {
               <div className="nav-drawer-top">
                 <div className="nav-logo" onClick={() => navigate("home")} style={{ gap: 8 }}>
                   <div className="nav-logo-mark" style={{ width: 28, height: 28 }}>
-                    <svg viewBox="0 0 20 20" fill="none" stroke="#fff" strokeWidth="1.8">
-                      <path d="M10 3C6 3 4 7 4 10c0 4 3 7 6 7s6-3 6-7c0-3-2-7-6-7z" />
-                      <path d="M10 3v14M4 10h12" />
-                    </svg>
+                    <img src="/Nautilizers.png" alt="Nautilizers" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
                   </div>
                   <span className="nav-logo-text" style={{ fontSize: 16 }}>S-Aging</span>
                 </div>
@@ -1910,6 +1939,14 @@ export default function SAgingApp() {
         )}
       </AnimatePresence>
 
+      <Antigravity visible={["home", "about", "profile"].includes(page)} />
+
+      {["upload", "simulation"].includes(page) && (
+        <div className="banana-swatch-bg" aria-hidden="true">
+          <div className="banana-swatch-inner" />
+        </div>
+      )}
+
       {page === "home" && <HomePage onNavigate={navigate} />}
       {page === "upload" && <UploadPage onNavigate={navigate} setSimConfig={setSimConfig} />}
       {page === "simulation" && <SimulationPage config={simConfig} />}
@@ -1918,6 +1955,11 @@ export default function SAgingApp() {
 
       <footer className="footer">
         <span>S-Aging · FEU Institute of Technology · 2026</span>
+        <div className="footer-logos">
+          <img src="/ISO.png" alt="ISO 25010" className="footer-logo" />
+          <img src="/Nautilizers.png" alt="Nautilizers" className="footer-logo" />
+          <img src="/Tech.png" alt="FEU Tech" className="footer-logo" />
+        </div>
         <span>BS Computer Science — Software Engineering</span>
       </footer>
     </div>

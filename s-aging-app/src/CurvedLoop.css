@@ -1,0 +1,19 @@
+.curved-loop-jacket {
+  width: 100%;
+  overflow: hidden;
+  user-select: none;
+}
+
+.curved-loop-svg {
+  width: 100%;
+  height: 160px;
+  display: block;
+}
+
+@media (max-width: 768px) {
+  .curved-loop-svg { height: 120px; }
+}
+
+@media (max-width: 480px) {
+  .curved-loop-svg { height: 100px; }
+}

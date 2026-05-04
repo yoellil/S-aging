@@ -9,13 +9,13 @@ const COLORS = {
 };
 
 export default function AuthPage({ onAuth, initialNotice }) {
-  const [mode, setMode]       = useState("login"); // "login" | "register"
-  const [email, setEmail]     = useState("");
+  const [mode, setMode] = useState("login"); // "login" | "register"
+  const [email, setEmail] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError]     = useState(null);
-  const [info, setInfo]       = useState(initialNotice || null);
+  const [error, setError] = useState(null);
+  const [info, setInfo] = useState(initialNotice || null);
 
   const switchMode = (m) => {
     setMode(m);
@@ -90,8 +90,8 @@ export default function AuthPage({ onAuth, initialNotice }) {
             display: "flex", alignItems: "center", justifyContent: "center",
           }}>
             <svg viewBox="0 0 20 20" fill="none" stroke="#fff" strokeWidth="1.8" width={20} height={20}>
-              <path d="M10 3C6 3 4 7 4 10c0 4 3 7 6 7s6-3 6-7c0-3-2-7-6-7z"/>
-              <path d="M10 3v14M4 10h12"/>
+              <path d="M10 3C6 3 4 7 4 10c0 4 3 7 6 7s6-3 6-7c0-3-2-7-6-7z" />
+              <path d="M10 3v14M4 10h12" />
             </svg>
           </div>
           <div>
@@ -129,8 +129,10 @@ export default function AuthPage({ onAuth, initialNotice }) {
             {error && (
               <motion.div
                 initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}
-                style={{ background: COLORS.red50, border: `1px solid #F7C1C1`, borderRadius: 8,
-                  padding: "10px 14px", marginBottom: 16, fontSize: 13, color: COLORS.red400 }}
+                style={{
+                  background: COLORS.red50, border: `1px solid #F7C1C1`, borderRadius: 8,
+                  padding: "10px 14px", marginBottom: 16, fontSize: 13, color: COLORS.red400
+                }}
               >
                 {error}
               </motion.div>
@@ -138,8 +140,10 @@ export default function AuthPage({ onAuth, initialNotice }) {
             {info && (
               <motion.div
                 initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}
-                style={{ background: COLORS.green50, border: `1px solid #C0DD97`, borderRadius: 8,
-                  padding: "10px 14px", marginBottom: 16, fontSize: 13, color: COLORS.green600 }}
+                style={{
+                  background: COLORS.green50, border: `1px solid #C0DD97`, borderRadius: 8,
+                  padding: "10px 14px", marginBottom: 16, fontSize: 13, color: COLORS.green600
+                }}
               >
                 {info}
               </motion.div>
@@ -198,23 +202,56 @@ export default function AuthPage({ onAuth, initialNotice }) {
 }
 
 function Field({ label, type, value, onChange, placeholder }) {
+  const [show, setShow] = useState(false);
+  const isPassword = type === "password";
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
       <label style={{ fontSize: 12, fontWeight: 600, color: COLORS.gray600 }}>{label}</label>
-      <input
-        type={type}
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        placeholder={placeholder}
-        required
-        style={{
-          padding: "9px 12px", borderRadius: 8, border: "1px solid #DDDBD5",
-          fontSize: 14, outline: "none", background: "#fff", color: "#2A2A28",
-          transition: "border-color 0.15s",
-        }}
-        onFocus={e => e.target.style.borderColor = COLORS.green400}
-        onBlur={e => e.target.style.borderColor = "#DDDBD5"}
-      />
+      <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+        <input
+          type={isPassword && show ? "text" : type}
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          placeholder={placeholder}
+          required
+          style={{
+            width: "100%",
+            padding: isPassword ? "9px 40px 9px 12px" : "9px 12px",
+            borderRadius: 8, border: "1px solid #DDDBD5",
+            fontSize: 14, outline: "none", background: "#fff", color: "#2A2A28",
+            transition: "border-color 0.15s", boxSizing: "border-box",
+          }}
+          onFocus={e => e.target.style.borderColor = COLORS.green400}
+          onBlur={e => e.target.style.borderColor = "#DDDBD5"}
+        />
+        {isPassword && (
+          <button
+            type="button"
+            onClick={() => setShow(s => !s)}
+            tabIndex={-1}
+            aria-label={show ? "Hide password" : "Show password"}
+            style={{
+              position: "absolute", right: 10, background: "none", border: "none",
+              cursor: "pointer", color: COLORS.gray400, display: "flex",
+              alignItems: "center", padding: 4, borderRadius: 4,
+            }}
+          >
+            {show ? (
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
+                <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
+                <line x1="1" y1="1" x2="23" y2="23" />
+              </svg>
+            ) : (
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                <circle cx="12" cy="12" r="3" />
+              </svg>
+            )}
+          </button>
+        )}
+      </div>
     </div>
   );
 }
+

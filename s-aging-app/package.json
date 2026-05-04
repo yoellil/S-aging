@@ -10,7 +10,9 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@react-three/fiber": "^9.6.1",
     "@supabase/supabase-js": "^2.104.1",
+    "gsap": "^3.15.0",
     "lucide-react": "^1.8.0",
     "motion": "^12.38.0",
     "onnxruntime-web": "^1.24.3",

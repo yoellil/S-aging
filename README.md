@@ -107,6 +107,13 @@ Opens at `http://localhost:5173`.
 cd backend
 pip install -r requirements.txt
 uvicorn main:app --reload --host 0.0.0.0 --port 8001
+
+##if uvicorn isnt on the PATH, you can use 
+
+python -m uvicorn main:app --reload --host 0.0.0.0 --port 8001
+
+
+
 ```
 
 (Windows users can also run `start.bat`.)

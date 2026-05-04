@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "motion/react";
 import {
   Shield, KeyRound, UserPen, Camera, Trash2, Save,
@@ -60,6 +61,9 @@ function FadeIn({ children, delay = 0, className = "" }) {
 
 // ── Input field ─────────────────────────────────────────────────────────────
 function Field({ label, icon: Icon, type = "text", value, onChange, placeholder, disabled, multiline, id }) {
+  const [show, setShow] = useState(false);
+  const isPassword = type === "password";
+  const inputType = isPassword && show ? "text" : type;
   const shared = {
     id,
     value: value ?? "",
@@ -73,13 +77,43 @@ function Field({ label, icon: Icon, type = "text", value, onChange, placeholder,
         {Icon && <Icon size={12} style={{ marginRight: 5, opacity: 0.6 }} />}
         {label}
       </label>
-      {multiline
-        ? <textarea {...shared} rows={3} />
-        : <input type={type} {...shared} />
-      }
+      {multiline ? (
+        <textarea {...shared} rows={3} />
+      ) : isPassword ? (
+        <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+          <input {...shared} type={inputType} style={{ paddingRight: 40, width: "100%", boxSizing: "border-box" }} />
+          <button
+            type="button"
+            onClick={() => setShow(s => !s)}
+            tabIndex={-1}
+            aria-label={show ? "Hide password" : "Show password"}
+            style={{
+              position: "absolute", right: 10, background: "none", border: "none",
+              cursor: "pointer", color: "var(--text-muted)", display: "flex",
+              alignItems: "center", padding: 4, borderRadius: 4,
+            }}
+          >
+            {show ? (
+              <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
+                <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
+                <line x1="1" y1="1" x2="23" y2="23" />
+              </svg>
+            ) : (
+              <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                <circle cx="12" cy="12" r="3" />
+              </svg>
+            )}
+          </button>
+        </div>
+      ) : (
+        <input type={type} {...shared} />
+      )}
     </div>
   );
 }
+
 
 // ── Quick stat card ─────────────────────────────────────────────────────────
 function QuickStat({ icon: Icon, label, value, color, delay }) {
@@ -402,218 +436,218 @@ export default function ProfilePage({ auth, onLogout, onNavigate, setSimConfig, 
         {/* ═══════ OWN PROFILE (hidden while viewing another user) ═══════ */}
         {!viewingUser && (<>
 
-        {/* ═══════ HEADER CARD ═══════ */}
-        <FadeIn>
-          <div className="profile-header-card">
-            <div className="profile-header-bg" />
-            <div className="profile-header-content">
-              <div className="profile-avatar-wrap" onClick={() => fileRef.current?.click()}>
-                {profile.profile_picture_url ? (
-                  <img src={profile.profile_picture_url} alt="Profile" className="profile-avatar-img" />
-                ) : (
-                  <div className="profile-avatar-placeholder">{initials}</div>
+          {/* ═══════ HEADER CARD ═══════ */}
+          <FadeIn>
+            <div className="profile-header-card">
+              <div className="profile-header-bg" />
+              <div className="profile-header-content">
+                <div className="profile-avatar-wrap" onClick={() => fileRef.current?.click()}>
+                  {profile.profile_picture_url ? (
+                    <img src={profile.profile_picture_url} alt="Profile" className="profile-avatar-img" />
+                  ) : (
+                    <div className="profile-avatar-placeholder">{initials}</div>
+                  )}
+                  <div className="profile-avatar-overlay">
+                    <Camera size={18} />
+                  </div>
+                  <input
+                    ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif"
+                    style={{ display: "none" }} onChange={handlePictureUpload}
+                  />
+                  {saving === "picture" && <div className="profile-avatar-spinner" />}
+                </div>
+                {profile.profile_picture_url && (
+                  <button className="profile-avatar-remove" onClick={handlePictureDelete} title="Remove">
+                    <Trash2 size={11} />
+                  </button>
                 )}
-                <div className="profile-avatar-overlay">
-                  <Camera size={18} />
+                <div className="profile-header-info">
+                  <div className="profile-header-name">{profile.full_name || profile.username}</div>
+                  <div className="profile-header-username">@{profile.username}</div>
+                  <div className="profile-header-meta">
+                    <span><Mail size={11} /> {profile.email}</span>
+                    <span><CalendarDays size={11} /> Joined {memberSince}</span>
+                  </div>
+                  {profile.bio && <div className="profile-header-bio">{profile.bio}</div>}
                 </div>
-                <input
-                  ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif"
-                  style={{ display: "none" }} onChange={handlePictureUpload}
-                />
-                {saving === "picture" && <div className="profile-avatar-spinner" />}
-              </div>
-              {profile.profile_picture_url && (
-                <button className="profile-avatar-remove" onClick={handlePictureDelete} title="Remove">
-                  <Trash2 size={11} />
-                </button>
-              )}
-              <div className="profile-header-info">
-                <div className="profile-header-name">{profile.full_name || profile.username}</div>
-                <div className="profile-header-username">@{profile.username}</div>
-                <div className="profile-header-meta">
-                  <span><Mail size={11} /> {profile.email}</span>
-                  <span><CalendarDays size={11} /> Joined {memberSince}</span>
+                <div className="profile-header-actions">
+                  <button className="profile-settings-btn" onClick={() => setSettingsOpen(true)} title="Settings">
+                    <Settings size={13} /> Settings
+                  </button>
+                  <button className="profile-header-logout" onClick={onLogout} title="Log out">
+                    <LogOut size={13} /> Log out
+                  </button>
                 </div>
-                {profile.bio && <div className="profile-header-bio">{profile.bio}</div>}
-              </div>
-              <div className="profile-header-actions">
-                <button className="profile-settings-btn" onClick={() => setSettingsOpen(true)} title="Settings">
-                  <Settings size={13} /> Settings
-                </button>
-                <button className="profile-header-logout" onClick={onLogout} title="Log out">
-                  <LogOut size={13} /> Log out
-                </button>
               </div>
             </div>
-          </div>
-        </FadeIn>
+          </FadeIn>
 
-        {/* ═══════ QUICK STATS ═══════ */}
-        <div className="profile-stats-row">
-          <QuickStat icon={CalendarDays} label="Days active" value={memberDays} color={C.green400} delay={0.05} />
-          <QuickStat icon={LogIn} label="Total logins" value={loginCount} color={C.teal600} delay={0.1} />
-          <QuickStat icon={Activity} label="Simulations" value={simLogs.length} color={C.amber400} delay={0.15} />
-          <QuickStat icon={Shield} label="Security level" value="Good" color={C.green600} delay={0.2} />
-        </div>
-
-        {/* ═══════ TWO-COLUMN GRID ═══════ */}
-        <div className="profile-grid">
-
-          {/* ── LEFT COLUMN ── */}
-          <div className="profile-col">
-            {/* Personal info */}
-            <FadeIn delay={0.1}>
-              <div className="profile-card">
-                <div className="profile-card-header">
-                  <UserPen size={15} />
-                  <span>Personal information</span>
-                </div>
-                <Field id="pf-fullname" icon={UserPen} label="Full name" value={fullName} onChange={setFullName} placeholder="Your full name" />
-                <Field id="pf-bio" label="Bio" value={bio} onChange={setBio} placeholder="Tell us about yourself…" multiline />
-                <Field id="pf-phone" label="Phone" value={phone} onChange={setPhone} placeholder="+63 912 345 6789" />
-                <button className="profile-btn profile-btn-primary" onClick={handleSaveInfo} disabled={saving === "info"}>
-                  <Save size={13} />
-                  {saving === "info" ? "Saving…" : "Save changes"}
-                </button>
-              </div>
-            </FadeIn>
-
-            {/* Change username */}
-            <FadeIn delay={0.15}>
-              <div className="profile-card">
-                <div className="profile-card-header">
-                  <Fingerprint size={15} />
-                  <span>Change username</span>
-                </div>
-                <Field id="pf-username" label="New username" value={newUsername} onChange={setNewUsername} placeholder="letters, numbers, underscores" />
-                <div className="profile-hint">3–50 characters · Alphanumeric and underscores only</div>
-                <button className="profile-btn profile-btn-primary" onClick={handleChangeUsername} disabled={saving === "username"}>
-                  {saving === "username" ? "Updating…" : "Update username"}
-                </button>
-              </div>
-            </FadeIn>
-
-            {/* Change password */}
-            <FadeIn delay={0.2}>
-              <div className="profile-card">
-                <div className="profile-card-header">
-                  <KeyRound size={15} />
-                  <span>Change password</span>
-                </div>
-                <Field id="pf-curpw" label="Current password" type="password" value={curPassword} onChange={setCurPassword} placeholder="Enter current password" />
-                <Field id="pf-newpw" label="New password" type="password" value={newPassword} onChange={setNewPassword} placeholder="Min 8 chars, uppercase, number, symbol" />
-                <div className="profile-hint">Other sessions will be logged out automatically</div>
-                <button className="profile-btn profile-btn-primary" onClick={handleChangePassword} disabled={saving === "password"}>
-                  <KeyRound size={13} />
-                  {saving === "password" ? "Changing…" : "Change password"}
-                </button>
-              </div>
-            </FadeIn>
+          {/* ═══════ QUICK STATS ═══════ */}
+          <div className="profile-stats-row">
+            <QuickStat icon={CalendarDays} label="Days active" value={memberDays} color={C.green400} delay={0.05} />
+            <QuickStat icon={LogIn} label="Total logins" value={loginCount} color={C.teal600} delay={0.1} />
+            <QuickStat icon={Activity} label="Simulations" value={simLogs.length} color={C.amber400} delay={0.15} />
+            <QuickStat icon={Shield} label="Security level" value="Good" color={C.green600} delay={0.2} />
           </div>
 
-          {/* ── RIGHT COLUMN ── */}
-          <div className="profile-col">
-            {/* Account details */}
-            <FadeIn delay={0.1}>
-              <div className="profile-card">
-                <div className="profile-card-header">
-                  <Shield size={15} />
-                  <span>Account details</span>
-                </div>
-                <div className="profile-detail-list">
-                  {[
-                    { label: "User ID", value: profile.id?.slice(0, 8) + "…", mono: true },
-                    { label: "Email", value: profile.email },
-                    { label: "Username", value: "@" + profile.username },
-                    { label: "Member since", value: memberSince },
-                    { label: "Last updated", value: profile.profile_updated_at ? _relativeTime(profile.profile_updated_at) : "Never" },
-                    { label: "Last login", value: "—" },
-                  ].map(({ label, value, mono }) => (
-                    <div className="profile-detail-row" key={label}>
-                      <span className="profile-detail-label">{label}</span>
-                      <span className={`profile-detail-value${mono ? " mono" : ""}`}>{value}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </FadeIn>
+          {/* ═══════ TWO-COLUMN GRID ═══════ */}
+          <div className="profile-grid">
 
-            {/* Simulation history */}
-            <FadeIn delay={0.2}>
-              <div className="profile-card">
-                <div className="profile-card-header">
-                  <Activity size={15} />
-                  <span>Simulation history</span>
-                  {simLogs.length > 0 && <span className="profile-card-badge">{simLogs.length}</span>}
-                </div>
-                {simLogsLoading ? (
-                  <div className="profile-hint" style={{ padding: "20px 0", textAlign: "center" }}>Loading…</div>
-                ) : simLogs.length === 0 ? (
-                  <div className="profile-hint" style={{ padding: "20px 0", textAlign: "center" }}>No simulations run yet</div>
-                ) : (
-                  <div className="profile-simlog-list">
-                    {simLogs.map((log, i) => {
-                      const isFW = log.disease === "fusarium_wilt";
-                      const diseaseName = isFW ? "Fusarium Wilt TR4" : "Black Sigatoka";
-                      const diseaseColor = isFW ? C.amber400 : C.teal600;
-                      const diseaseBg = isFW ? C.amber50 : C.teal50;
-                      return (
-                        <motion.div
-                          className="profile-simlog-item"
-                          key={log.id}
-                          initial={{ opacity: 0, x: -8 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          transition={{ delay: i * 0.03, duration: 0.3 }}
-                          onClick={() => setSelectedLog(log)}
-                          title="Click to view saved result"
-                        >
-                          {log.image_url ? (
-                            <img src={log.image_url} alt="" className="profile-simlog-thumb" />
-                          ) : (
-                            <div className="profile-simlog-badge" style={{ background: diseaseBg, color: diseaseColor }}>
-                              {isFW ? "FW" : "BS"}
-                            </div>
-                          )}
-                          <div className="profile-simlog-body">
-                            <div className="profile-simlog-title">{diseaseName}</div>
-                            <div className="profile-simlog-meta">
-                              {log.temp}°C · {log.rh}% RH · {log.density} density · {log.months_simulated} mo
-                            </div>
-                            <div className="profile-simlog-stats">
-                              <span style={{ color: C.green600 }}>✓ {Number(log.final_healthy_pct).toFixed(1)}% healthy</span>
-                              <span style={{ color: C.amber400 }}>⚠ {Number(log.final_infected_pct).toFixed(1)}% infected</span>
-                              <span style={{ color: C.red400 }}>✕ {Number(log.final_necrotic_pct).toFixed(1)}% necrotic</span>
-                            </div>
-                          </div>
-                          <div className="profile-simlog-right">
-                            <div className="profile-simlog-time">{_relativeTime(log.created_at)}</div>
-                            <div className="profile-simlog-rerun">View →</div>
-                          </div>
-                        </motion.div>
-                      );
-                    })}
+            {/* ── LEFT COLUMN ── */}
+            <div className="profile-col">
+              {/* Personal info */}
+              <FadeIn delay={0.1}>
+                <div className="profile-card">
+                  <div className="profile-card-header">
+                    <UserPen size={15} />
+                    <span>Personal information</span>
                   </div>
-                )}
-              </div>
-            </FadeIn>
-
-            {/* Security tips */}
-            <FadeIn delay={0.25}>
-              <div className="profile-card profile-card-accent">
-                <div className="profile-card-header">
-                  <Shield size={15} />
-                  <span>Security tips</span>
+                  <Field id="pf-fullname" icon={UserPen} label="Full name" value={fullName} onChange={setFullName} placeholder="Your full name" />
+                  <Field id="pf-bio" label="Bio" value={bio} onChange={setBio} placeholder="Tell us about yourself…" multiline />
+                  <Field id="pf-phone" label="Phone" value={phone} onChange={setPhone} placeholder="+63 912 345 6789" />
+                  <button className="profile-btn profile-btn-primary" onClick={handleSaveInfo} disabled={saving === "info"}>
+                    <Save size={13} />
+                    {saving === "info" ? "Saving…" : "Save changes"}
+                  </button>
                 </div>
-                <ul className="profile-tips">
-                  <li>Use a strong, unique password with mixed characters</li>
-                  <li>Log out when using shared or public devices</li>
-                  <li>Check your activity log regularly for suspicious logins</li>
-                  <li>Keep your email address up to date for recovery</li>
-                </ul>
-              </div>
-            </FadeIn>
+              </FadeIn>
+
+              {/* Change username */}
+              <FadeIn delay={0.15}>
+                <div className="profile-card">
+                  <div className="profile-card-header">
+                    <Fingerprint size={15} />
+                    <span>Change username</span>
+                  </div>
+                  <Field id="pf-username" label="New username" value={newUsername} onChange={setNewUsername} placeholder="letters, numbers, underscores" />
+                  <div className="profile-hint">3–50 characters · Alphanumeric and underscores only</div>
+                  <button className="profile-btn profile-btn-primary" onClick={handleChangeUsername} disabled={saving === "username"}>
+                    {saving === "username" ? "Updating…" : "Update username"}
+                  </button>
+                </div>
+              </FadeIn>
+
+              {/* Change password */}
+              <FadeIn delay={0.2}>
+                <div className="profile-card">
+                  <div className="profile-card-header">
+                    <KeyRound size={15} />
+                    <span>Change password</span>
+                  </div>
+                  <Field id="pf-curpw" label="Current password" type="password" value={curPassword} onChange={setCurPassword} placeholder="Enter current password" />
+                  <Field id="pf-newpw" label="New password" type="password" value={newPassword} onChange={setNewPassword} placeholder="Min 8 chars, uppercase, number, symbol" />
+                  <div className="profile-hint">Other sessions will be logged out automatically</div>
+                  <button className="profile-btn profile-btn-primary" onClick={handleChangePassword} disabled={saving === "password"}>
+                    <KeyRound size={13} />
+                    {saving === "password" ? "Changing…" : "Change password"}
+                  </button>
+                </div>
+              </FadeIn>
+            </div>
+
+            {/* ── RIGHT COLUMN ── */}
+            <div className="profile-col">
+              {/* Account details */}
+              <FadeIn delay={0.1}>
+                <div className="profile-card">
+                  <div className="profile-card-header">
+                    <Shield size={15} />
+                    <span>Account details</span>
+                  </div>
+                  <div className="profile-detail-list">
+                    {[
+                      { label: "User ID", value: profile.id?.slice(0, 8) + "…", mono: true },
+                      { label: "Email", value: profile.email },
+                      { label: "Username", value: "@" + profile.username },
+                      { label: "Member since", value: memberSince },
+                      { label: "Last updated", value: profile.profile_updated_at ? _relativeTime(profile.profile_updated_at) : "Never" },
+                      { label: "Last login", value: "—" },
+                    ].map(({ label, value, mono }) => (
+                      <div className="profile-detail-row" key={label}>
+                        <span className="profile-detail-label">{label}</span>
+                        <span className={`profile-detail-value${mono ? " mono" : ""}`}>{value}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </FadeIn>
+
+              {/* Simulation history */}
+              <FadeIn delay={0.2}>
+                <div className="profile-card">
+                  <div className="profile-card-header">
+                    <Activity size={15} />
+                    <span>Simulation history</span>
+                    {simLogs.length > 0 && <span className="profile-card-badge">{simLogs.length}</span>}
+                  </div>
+                  {simLogsLoading ? (
+                    <div className="profile-hint" style={{ padding: "20px 0", textAlign: "center" }}>Loading…</div>
+                  ) : simLogs.length === 0 ? (
+                    <div className="profile-hint" style={{ padding: "20px 0", textAlign: "center" }}>No simulations run yet</div>
+                  ) : (
+                    <div className="profile-simlog-list">
+                      {simLogs.map((log, i) => {
+                        const isFW = log.disease === "fusarium_wilt";
+                        const diseaseName = isFW ? "Fusarium Wilt TR4" : "Black Sigatoka";
+                        const diseaseColor = isFW ? C.amber400 : C.teal600;
+                        const diseaseBg = isFW ? C.amber50 : C.teal50;
+                        return (
+                          <motion.div
+                            className="profile-simlog-item"
+                            key={log.id}
+                            initial={{ opacity: 0, x: -8 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ delay: i * 0.03, duration: 0.3 }}
+                            onClick={() => setSelectedLog(log)}
+                            title="Click to view saved result"
+                          >
+                            {log.image_url ? (
+                              <img src={log.image_url} alt="" className="profile-simlog-thumb" />
+                            ) : (
+                              <div className="profile-simlog-badge" style={{ background: diseaseBg, color: diseaseColor }}>
+                                {isFW ? "FW" : "BS"}
+                              </div>
+                            )}
+                            <div className="profile-simlog-body">
+                              <div className="profile-simlog-title">{diseaseName}</div>
+                              <div className="profile-simlog-meta">
+                                {log.temp}°C · {log.rh}% RH · {log.density} density · {log.months_simulated} mo
+                              </div>
+                              <div className="profile-simlog-stats">
+                                <span style={{ color: C.green600 }}>✓ {Number(log.final_healthy_pct).toFixed(1)}% healthy</span>
+                                <span style={{ color: C.amber400 }}>⚠ {Number(log.final_infected_pct).toFixed(1)}% infected</span>
+                                <span style={{ color: C.red400 }}>✕ {Number(log.final_necrotic_pct).toFixed(1)}% necrotic</span>
+                              </div>
+                            </div>
+                            <div className="profile-simlog-right">
+                              <div className="profile-simlog-time">{_relativeTime(log.created_at)}</div>
+                              <div className="profile-simlog-rerun">View →</div>
+                            </div>
+                          </motion.div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </FadeIn>
+
+              {/* Security tips */}
+              <FadeIn delay={0.25}>
+                <div className="profile-card profile-card-accent">
+                  <div className="profile-card-header">
+                    <Shield size={15} />
+                    <span>Security tips</span>
+                  </div>
+                  <ul className="profile-tips">
+                    <li>Use a strong, unique password with mixed characters</li>
+                    <li>Log out when using shared or public devices</li>
+                    <li>Check your activity log regularly for suspicious logins</li>
+                    <li>Keep your email address up to date for recovery</li>
+                  </ul>
+                </div>
+              </FadeIn>
+            </div>
           </div>
-        </div>
         </>)}
       </div>
     </div>
@@ -844,7 +878,7 @@ function SimLogDetailModal({ log, onClose, setSimConfig, onNavigate, actionLabel
     onNavigate?.("simulation");
   };
 
-  return (
+  return createPortal(
     <motion.div className="settings-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }} onClick={onClose}>
       <motion.div
         className="settings-modal simlog-detail-modal"
@@ -912,7 +946,8 @@ function SimLogDetailModal({ log, onClose, setSimConfig, onNavigate, actionLabel
           </p>
         </div>
       </motion.div>
-    </motion.div>
+    </motion.div>,
+    document.body
   );
 }
 
@@ -953,7 +988,7 @@ function SettingsModal({ profile, theme, setTheme, simLogs, setSimConfig, onClos
     a.click();
   };
 
-  return (
+  return createPortal(
     <motion.div className="settings-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }} onClick={onClose}>
       <motion.div className="settings-modal" initial={{ scale: 0.96, y: 12 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.96, y: 12 }} transition={{ duration: 0.2 }} onClick={e => e.stopPropagation()}>
 
@@ -1064,7 +1099,8 @@ function SettingsModal({ profile, theme, setTheme, simLogs, setSimConfig, onClos
         </div>
 
       </motion.div>
-    </motion.div>
+    </motion.div>,
+    document.body
   );
 }
 
