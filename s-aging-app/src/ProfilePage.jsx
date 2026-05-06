@@ -5,7 +5,7 @@ import {
   Shield, KeyRound, UserPen, Camera, Trash2, Save,
   LogIn, LogOut, Fingerprint, Mail, CalendarDays, Activity,
   RefreshCw, Search, X, ArrowLeft, Users, Orbit,
-  Settings, Sun, Moon, Globe, Lock, Download, Check,
+  Settings, Sun, Moon, Globe, Lock, Download, Check, Zap,
 } from "lucide-react";
 import {
   getProfile, updateProfile, updateUsername, updatePassword,
@@ -133,7 +133,7 @@ function QuickStat({ icon: Icon, label, value, color, delay }) {
 // ══════════════════════════════════════════════════════════════════════════════
 //  PROFILE PAGE
 // ══════════════════════════════════════════════════════════════════════════════
-export default function ProfilePage({ auth, onLogout, onNavigate, setSimConfig, theme, setTheme }) {
+export default function ProfilePage({ auth, onLogout, onNavigate, setSimConfig, theme, setTheme, reduceMotion, setReduceMotion }) {
   // No tokens. Supabase client handles auth automatically via session in localStorage.
   const userId = auth?.session?.user?.id || null;
 
@@ -350,6 +350,8 @@ export default function ProfilePage({ auth, onLogout, onNavigate, setSimConfig, 
               profile={profile}
               theme={theme}
               setTheme={setTheme}
+              reduceMotion={reduceMotion}
+              setReduceMotion={setReduceMotion}
               simLogs={simLogs}
               setSimConfig={setSimConfig}
               onClose={() => setSettingsOpen(false)}
@@ -952,7 +954,7 @@ function SimLogDetailModal({ log, onClose, setSimConfig, onNavigate, actionLabel
 }
 
 // ── Settings Modal ───────────────────────────────────────────────────────────
-function SettingsModal({ profile, theme, setTheme, simLogs, setSimConfig, onClose, onSaved }) {
+function SettingsModal({ profile, theme, setTheme, reduceMotion, setReduceMotion, simLogs, setSimConfig, onClose, onSaved }) {
   const [isPublic, setIsPublic] = useState(profile?.is_public ?? false);
   const [defaultDisease, setDefaultDisease] = useState(profile?.default_disease ?? "black_sigatoka");
   const [defaultTemp, setDefaultTemp] = useState(profile?.default_temp ?? 26);
@@ -1013,6 +1015,20 @@ function SettingsModal({ profile, theme, setTheme, simLogs, setSimConfig, onClos
               <button className={`theme-btn${theme === "dark" ? " active" : ""}`} onClick={() => setTheme("dark")}>
                 <Moon size={12} /> Dark
               </button>
+            </div>
+          </div>
+          <div className="settings-row">
+            <div>
+              <div className="settings-row-label" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <Zap size={13} /> Reduce animations
+              </div>
+              <div className="settings-row-desc">Disables particle effects and background animations to improve performance.</div>
+            </div>
+            <div className="settings-toggle" onClick={() => setReduceMotion(v => !v)}>
+              <div className={`settings-toggle-track${reduceMotion ? " on" : ""}`}>
+                <div className="settings-toggle-thumb" />
+              </div>
+              <span className="settings-toggle-label">{reduceMotion ? "On" : "Off"}</span>
             </div>
           </div>
         </div>

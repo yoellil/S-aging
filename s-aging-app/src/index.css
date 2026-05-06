@@ -559,7 +559,7 @@ body::before {
    FEATURES
    ══════════════════════════════════════════════════════════════ */
 .features {
-  padding: 72px 2rem;
+  padding: 190px 2rem 72px;
   max-width: none;
   margin: 0;
   position: relative;
@@ -817,8 +817,9 @@ body::before {
   padding: 14px 24px;
   border-top: 1px solid var(--color-border-secondary);
   background: var(--bg2);
-  display: flex;
-  gap: 16px;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px 20px;
 }
 
 .disease-meta {
@@ -1781,18 +1782,32 @@ body::before {
   opacity: 0.12;
 }
 
+[data-theme="dark"] .home-cta-band {
+  background: transparent;
+  border-top-color: rgba(99, 153, 34, 0.2);
+}
+
+[data-theme="dark"] .home-cta-heading {
+  color: #ffffff;
+}
+
+[data-theme="dark"] .home-cta-badge {
+  background: rgba(99, 153, 34, 0.15);
+  border-color: rgba(99, 153, 34, 0.3);
+}
+
 .banana-swatch-inner {
   width: 100%;
-  height: 200%;
+  height: calc(100% + 90px);
   background-image: url('/banana-pix.png');
   background-repeat: repeat;
   background-size: 90px 90px;
-  animation: banana-scroll 18s linear infinite;
+  animation: banana-scroll 6s linear infinite;
 }
 
 @keyframes banana-scroll {
   from { transform: translateY(0); }
-  to   { transform: translateY(-50%); }
+  to   { transform: translateY(-90px); }
 }
 
 /* ── Home marquee ── */

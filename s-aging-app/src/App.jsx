@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { motion, AnimatePresence, useMotionValue, useSpring, useInView } from "motion/react";
 import {
   ScanSearch, Waypoints, Thermometer, Biohazard, ShieldCheck, Sprout,
-  CloudUpload, X, Play, Pause, RefreshCcw,
+  CloudUpload, X, Play, Pause, RefreshCcw, Wind,
   Hexagon, ScanEye, Orbit, Scroll,
   TestTubes, Sparkles, Atom, MoveRight, LoaderCircle, DoorOpen,
   Fingerprint, Leaf, FlaskConical, BookOpen, Users, BarChart3,
@@ -182,91 +182,545 @@ function Sparkline({ data, color }) {
   return <canvas ref={ref} width={280} height={60} style={{ width: "100%", height: 60, display: "block" }} />;
 }
 
-// ── FIELD VIEW COMPONENT ─────────────────────────────────────────────────────
-function FieldView({ disease, timeStep, envFactor }) {
+// ── FIELD SPARKLINE ───────────────────────────────────────────────────────────
+function FieldSparkline({ data, timeStep }) {
   const ref = useRef(null);
-  const gridRef = useRef(null);
-  const lastDiseaseRef = useRef(null);
+  useEffect(() => {
+    const canvas = ref.current;
+    if (!canvas || !data?.length) return;
+    // Read the actual rendered CSS size, then size the backing store to match.
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = Math.round(rect.width * dpr);
+    canvas.height = Math.round(rect.height * dpr);
+    const ctx = canvas.getContext("2d");
+    ctx.scale(dpr, dpr);
+    const W = rect.width, H = rect.height;
+    ctx.clearRect(0, 0, W, H);
 
+    const PL = 32, PR = 14, PT = 8, PB = 22;
+    const cw = W - PL - PR, ch = H - PT - PB;
+    const n = data.length;
+    const xOf = i => PL + (n < 2 ? cw / 2 : (i / (n - 1)) * cw);
+    const yOf = v => PT + ch - (v / 100) * ch;
+
+    const isDark = document.documentElement.dataset.theme === "dark";
+    const gridCol = isDark ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.07)";
+    const labelCol = isDark ? "rgba(255,255,255,0.40)" : "rgba(0,0,0,0.40)";
+
+    // Grid lines + Y labels
+    ctx.font = "10px sans-serif";
+    ctx.textAlign = "right";
+    [0, 25, 50, 75, 100].forEach(v => {
+      const y = yOf(v);
+      ctx.beginPath(); ctx.moveTo(PL, y); ctx.lineTo(PL + cw, y);
+      ctx.strokeStyle = gridCol; ctx.lineWidth = 1; ctx.stroke();
+      ctx.fillStyle = labelCol;
+      ctx.fillText(v + "%", PL - 5, y + 3.5);
+    });
+
+    // X axis labels
+    ctx.textAlign = "center";
+    [0, 10, 20, 30].forEach(m => {
+      const i = Math.min(m, n - 1);
+      ctx.fillStyle = labelCol;
+      ctx.fillText("M" + m, xOf(i), PT + ch + PB - 5);
+    });
+
+    // 4 data lines
+    const SERIES = [
+      { key: "healthy", color: "#4a9020" },
+      { key: "early", color: "#c4b010" },
+      { key: "advanced", color: "#f07818" },
+      { key: "hi", color: "#cc1212" },
+    ];
+    SERIES.forEach(({ key, color }) => {
+      ctx.beginPath();
+      data.forEach((d, i) => {
+        const x = xOf(i), y = yOf(d[key]);
+        i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+      });
+      ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.lineJoin = "round"; ctx.stroke();
+    });
+
+    // Dashed cursor at current month
+    const ti = Math.min(timeStep, n - 1);
+    const cx = xOf(ti);
+    ctx.beginPath(); ctx.moveTo(cx, PT); ctx.lineTo(cx, PT + ch);
+    ctx.strokeStyle = isDark ? "rgba(255,255,255,0.28)" : "rgba(0,0,0,0.20)";
+    ctx.lineWidth = 1; ctx.setLineDash([3, 3]); ctx.stroke(); ctx.setLineDash([]);
+
+    // Dots at cursor
+    SERIES.forEach(({ key, color }) => {
+      const v = data[ti]?.[key] ?? 0;
+      ctx.beginPath(); ctx.arc(cx, yOf(v), 3.5, 0, Math.PI * 2);
+      ctx.fillStyle = color; ctx.fill();
+    });
+  }, [data, timeStep]);
+
+  return <canvas ref={ref} style={{ width: "100%", height: 160, display: "block" }} />;
+}
+
+// ── FIELD SIMULATION CONSTANTS & PURE FUNCTIONS ──────────────────────────────
+const FIELD_COLS = 80;
+const FIELD_ROWS = 40;
+const FIELD_STEPS_PER_MONTH = 6;
+// Age thresholds (in SCA steps) for color bands
+const FIELD_AGE_ORANGE = FIELD_STEPS_PER_MONTH * 10;  // ~10 months infected
+const FIELD_AGE_RED = FIELD_STEPS_PER_MONTH * 20;  // ~20 months infected
+
+function makeFieldGrid(density) {
+  return Array.from({ length: FIELD_ROWS }, () =>
+    Array.from({ length: FIELD_COLS }, () => ({
+      hasPlant: Math.random() < density,
+      state: 0,
+      age: 0,
+    }))
+  );
+}
+
+function makeFieldGridCornrow(density) {
+  // Row spacing: wider gaps between rows as density decreases (2–6 rows apart)
+  const rowStep = Math.max(2, Math.round((1 - density) * 5 + 2));
+  const colStep = 2; // fixed: plants every 2 columns within a row
+
+  return Array.from({ length: FIELD_ROWS }, (_, r) =>
+    Array.from({ length: FIELD_COLS }, (_, c) => {
+      if (r % rowStep !== 0) return { hasPlant: false, state: 0, age: 0 };
+      // Stagger alternate rows by half a column step for banana plantation geometry
+      const stagger = (Math.floor(r / rowStep) % 2 === 1) ? 1 : 0;
+      return { hasPlant: (c + stagger) % colStep === 0, state: 0, age: 0 };
+    })
+  );
+}
+
+function fieldCellColor(state, age) {
+  if (state === 0) return "#4a9020";             // Green  – Healthy
+  if (age < FIELD_AGE_ORANGE) return "#d4c520";  // Yellow – Early
+  if (age < FIELD_AGE_RED) return "#f07818";  // Orange – Advanced
+  return "#cc1212";                              // Red    – Highly advanced
+}
+
+function stepFieldGrid(g, disease, env, windAngle, maxRange = 1) {
+  const next = g.map(row => row.map(cell => ({ ...cell })));
+
+  // Wind label = origin of wind; spores travel in the opposite direction.
+  const wx = -Math.cos(windAngle), wy = -Math.sin(windAngle);
+  const NBRS = [[-1, -1], [-1, 0], [-1, 1], [0, -1], [0, 1], [1, -1], [1, 0], [1, 1]];
+
+  const bsWeights = disease === "black_sigatoka"
+    ? NBRS.map(([dr, dc]) => {
+      const len = Math.sqrt(dc * dc + dr * dr);
+      const dot = (dc / len) * wx + (dr / len) * wy;
+      return [dr, dc, (0.05 + 0.95 * Math.max(0, (dot + 1) / 2)) * (len === 1 ? 1 : 0.75)];
+    })
+    : null;
+
+  for (let r = 0; r < FIELD_ROWS; r++) {
+    for (let c = 0; c < FIELD_COLS; c++) {
+      const cell = g[r][c];
+      if (!cell.hasPlant) continue;
+      if (cell.state === 1) {
+        next[r][c].age++;
+      } else {
+        let prob = 0;
+        if (bsWeights) {
+          for (const [dr, dc, w] of bsWeights) {
+            const nr = r + dr, nc = c + dc;
+            if (nr >= 0 && nr < FIELD_ROWS && nc >= 0 && nc < FIELD_COLS && g[nr][nc].hasPlant && g[nr][nc].state === 1)
+              prob += 0.06 * w * env;
+          }
+          for (const dist of [2, 3]) {
+            const nr = Math.round(r - dist * wy), nc = Math.round(c - dist * wx);
+            if (nr >= 0 && nr < FIELD_ROWS && nc >= 0 && nc < FIELD_COLS && g[nr][nc].hasPlant && g[nr][nc].state === 1)
+              prob += (0.02 / dist) * env;
+          }
+        } else {
+          for (const [dr, dc] of NBRS) {
+            const nr = r + dr, nc = c + dc;
+            if (nr >= 0 && nr < FIELD_ROWS && nc >= 0 && nc < FIELD_COLS && g[nr][nc].hasPlant && g[nr][nc].state === 1)
+              prob += 0.08 * env;
+          }
+        }
+
+        // Extended-range spread for cornrow inter-row propagation.
+        // Probability decays with Chebyshev distance so it stays moderate.
+        if (maxRange > 1) {
+          for (let dr = -maxRange; dr <= maxRange; dr++) {
+            for (let dc = -maxRange; dc <= maxRange; dc++) {
+              const d = Math.max(Math.abs(dr), Math.abs(dc));
+              if (d <= 1 || d > maxRange) continue;
+              const nr = r + dr, nc = c + dc;
+              if (nr < 0 || nr >= FIELD_ROWS || nc < 0 || nc >= FIELD_COLS) continue;
+              if (!g[nr][nc].hasPlant || g[nr][nc].state !== 1) continue;
+              const decay = 0.35 / d;
+              if (bsWeights) {
+                const len = Math.sqrt(dc * dc + dr * dr);
+                const dot = (dc / len) * wx + (dr / len) * wy;
+                const w = 0.05 + 0.95 * Math.max(0, (dot + 1) / 2);
+                prob += 0.06 * w * decay * env;
+              } else {
+                prob += 0.08 * decay * env;
+              }
+            }
+          }
+        }
+
+        if (prob > 0 && Math.random() < Math.min(prob, 0.95))
+          next[r][c].state = 1;
+      }
+    }
+  }
+  return next;
+}
+
+function computeFieldSnapshots(seededGrid, disease, envFactor, windAngle, maxRange = 1, temp = 27) {
+  const isFW = disease === "fusarium_wilt";
+  const T_MIN = isFW ? 20.0 : 16.6;
+  const T_MAX = isFW ? 35.0 : 30.3;
+  const outOfRange = temp < T_MIN || temp > T_MAX;
+  // Outside viable range = dormant/latent: still spreads, but very slowly
+  const env = outOfRange ? 0.08 : Math.max(0.15, envFactor);
+  const snaps = [seededGrid];
+  let cur = seededGrid;
+  for (let m = 1; m <= 30; m++) {
+    for (let s = 0; s < FIELD_STEPS_PER_MONTH; s++)
+      cur = stepFieldGrid(cur, disease, env, windAngle, maxRange);
+    snaps.push(cur);
+  }
+  return snaps;
+}
+
+function fieldSnapshotStats(snap) {
+  let total = 0, healthy = 0, early = 0, advanced = 0, hi = 0;
+  for (const row of snap)
+    for (const cell of row) {
+      if (!cell.hasPlant) continue;
+      total++;
+      if (cell.state === 0) healthy++;
+      else if (cell.age < FIELD_AGE_ORANGE) early++;
+      else if (cell.age < FIELD_AGE_RED) advanced++;
+      else hi++;
+    }
+  if (!total) return { healthy: 100, early: 0, advanced: 0, hi: 0 };
+  const p = v => Math.round(v / total * 100);
+  return { healthy: p(healthy), early: p(early), advanced: p(advanced), hi: p(hi) };
+}
+
+function FieldView({ disease, timeStep, envFactor, temp, onStatsUpdate, playing, onPlayPause, onRerun }) {
+  const ref = useRef(null);
+  const animRef = useRef(null);
+  const snapsRef = useRef(null);
+  const displayRef = useRef(null);
+  const timeStepRef = useRef(timeStep);
+  const diseaseRef = useRef(disease);
+  const envRef = useRef(envFactor);
+  const tempRef = useRef(temp);
+  const densityRef = useRef(0.75);
+  const maxRangeRef = useRef(1);
+  const baseGridRef = useRef(null);
+  const seedsRef = useRef([]);    // [{cx,cy}, …] — accumulates clicks
+  const windAngle = useRef(0);     // radians; 0 = East
+  const dragStart = useRef(null);
+
+  const [density, setDensity] = useState(0.75);
+  const [pattern, setPattern] = useState("random"); // "random" | "cornrow"
+  const [windDir, setWindDir] = useState("E");
+  const [computing, setComputing] = useState(false);
+  const [showWind, setShowWind] = useState(false);
+
+  useEffect(() => { diseaseRef.current = disease; }, [disease]);
+  useEffect(() => { envRef.current = envFactor; }, [envFactor]);
+  useEffect(() => { tempRef.current = temp; }, [temp]);
+  useEffect(() => { timeStepRef.current = timeStep; }, [timeStep]);
+  useEffect(() => {
+    maxRangeRef.current = pattern === "cornrow"
+      ? Math.max(2, Math.round((1 - density) * 5 + 2)) + 1
+      : 1;
+  }, [pattern, density]);
+
+  const rebuild = useCallback((base, seeds, angle) => {
+    setComputing(true);
+    setTimeout(() => {
+      const seeded = base.map((row, r) => row.map((cell, c) => {
+        const hit = seeds.some(({ cx, cy }) => Math.abs(r - cy) <= 2 && Math.abs(c - cx) <= 2);
+        return hit && cell.hasPlant ? { ...cell, state: 1, age: 0 } : { ...cell };
+      }));
+      const snaps = computeFieldSnapshots(seeded, diseaseRef.current, envRef.current, angle, maxRangeRef.current, tempRef.current);
+      snapsRef.current = snaps;
+      displayRef.current = snaps[Math.min(timeStepRef.current, snaps.length - 1)];
+      onStatsUpdate?.(snaps.map(fieldSnapshotStats));
+      setComputing(false);
+    }, 10);
+  }, []);
+
+  const doReset = useCallback((den, pat) => {
+    const base = pat === "cornrow" ? makeFieldGridCornrow(den) : makeFieldGrid(den);
+    baseGridRef.current = base;
+    seedsRef.current = [];
+    windAngle.current = 0;
+    setWindDir("E");
+    rebuild(base, [], 0);
+  }, [rebuild]);
+
+  useEffect(() => { doReset(density, pattern); }, [disease, density, pattern, doReset]);
+
+  useEffect(() => {
+    if (!snapsRef.current) return;
+    displayRef.current = snapsRef.current[Math.min(timeStep, snapsRef.current.length - 1)];
+  }, [timeStep]);
+
+  // ── Pointer interaction (mouse + touch via Pointer Events) ──────────────────
+  const toCoords = (e) => {
+    const canvas = ref.current; if (!canvas) return null;
+    const rect = canvas.getBoundingClientRect();
+    const px = (e.clientX - rect.left) / rect.width;
+    const py = (e.clientY - rect.top) / rect.height;
+    return {
+      px, py,
+      cx: Math.min(FIELD_COLS - 1, Math.max(0, Math.floor(px * FIELD_COLS))),
+      cy: Math.min(FIELD_ROWS - 1, Math.max(0, Math.floor(py * FIELD_ROWS))),
+    };
+  };
+
+  const onDown = (e) => {
+    ref.current?.setPointerCapture(e.pointerId);
+    dragStart.current = toCoords(e);
+  };
+
+  const onUp = (e) => {
+    if (!dragStart.current) return;
+    const c = toCoords(e);
+    const start = dragStart.current;
+    dragStart.current = null;
+    if (!c || !baseGridRef.current) return;
+    if (Math.hypot(c.px - start.px, c.py - start.py) < 0.02) {
+      seedsRef.current = [...seedsRef.current, { cx: c.cx, cy: c.cy }];
+      rebuild(baseGridRef.current, seedsRef.current, windAngle.current);
+    }
+  };
+
+  // ── Render loop ─────────────────────────────────────────────────────────────
   useEffect(() => {
     const canvas = ref.current; if (!canvas) return;
     const ctx = canvas.getContext("2d");
     const W = canvas.width, H = canvas.height;
-    const COLS = 20, ROWS = 12;
-    const cW = W / COLS, cH = H / ROWS;
+    const cW = W / FIELD_COLS, cH = H / FIELD_ROWS;
+    const RAD = Math.min(cW, cH) * 0.40;
 
-    // Reset grid on disease change
-    if (!gridRef.current || lastDiseaseRef.current !== disease) {
-      gridRef.current = Array.from({ length: ROWS }, (_, r) =>
-        Array.from({ length: COLS }, (_, c) => ({
-          state: (r === 5 && c === 15) || (r === 4 && c === 14) ? 1 : 0,
-          age: 0
-        }))
-      );
-      lastDiseaseRef.current = disease;
-    }
-    const g = gridRef.current;
-    const steps = Math.floor(timeStep * 0.1 * envFactor);
-    for (let s = 0; s < steps; s++) {
-      for (let r = 0; r < ROWS; r++) {
-        for (let c = 0; c < COLS; c++) {
-          if (g[r][c].state === 0) {
-            let nInf = 0;
-            for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) {
-              if (!(dr === 0 && dc === 0) && r + dr >= 0 && r + dr < ROWS && c + dc >= 0 && c + dc < COLS)
-                if (g[r + dr][c + dc].state >= 1) nInf++;
-            }
-            if (nInf > 0 && Math.random() < 0.04 * envFactor * nInf) g[r][c].state = 1;
-          }
-          if (g[r][c].state === 1) {
-            g[r][c].age++;
-            if (g[r][c].age > 15 && Math.random() < 0.08) g[r][c].state = 2;
+    const loop = () => {
+      const g = displayRef.current;
+      ctx.fillStyle = "#0d1a08"; ctx.fillRect(0, 0, W, H);
+      if (g) {
+        for (let r = 0; r < FIELD_ROWS; r++) {
+          for (let c = 0; c < FIELD_COLS; c++) {
+            const cell = g[r][c];
+            if (!cell.hasPlant) continue;
+            ctx.beginPath();
+            ctx.arc((c + 0.5) * cW, (r + 0.5) * cH, RAD, 0, Math.PI * 2);
+            ctx.fillStyle = fieldCellColor(cell.state, cell.age);
+            ctx.fill();
           }
         }
       }
-    }
+      animRef.current = requestAnimationFrame(loop);
+    };
+    animRef.current = requestAnimationFrame(loop);
+    return () => { if (animRef.current) cancelAnimationFrame(animRef.current); };
+  }, []);
 
-    // Render
-    ctx.clearRect(0, 0, W, H);
-    // Background gradient
-    const bgGrad = ctx.createLinearGradient(0, 0, 0, H);
-    bgGrad.addColorStop(0, "#d8ecaa"); bgGrad.addColorStop(1, "#c5e09a");
-    ctx.fillStyle = bgGrad; ctx.fillRect(0, 0, W, H);
-    // Grid lines
-    ctx.strokeStyle = "rgba(100,140,60,0.12)"; ctx.lineWidth = 0.5;
-    for (let r = 0; r <= ROWS; r++) { ctx.beginPath(); ctx.moveTo(0, r * cH); ctx.lineTo(W, r * cH); ctx.stroke(); }
-    for (let c = 0; c <= COLS; c++) { ctx.beginPath(); ctx.moveTo(c * cW, 0); ctx.lineTo(c * cW, H); ctx.stroke(); }
+  // 8 compass directions: label, angle (radians in canvas coords, Y-down)
+  const WIND_DIRS = [
+    ["NW", -3 * Math.PI / 4], ["N", -Math.PI / 2], ["NE", -Math.PI / 4],
+    ["W", Math.PI], [null, null], ["E", 0],
+    ["SW", 3 * Math.PI / 4], ["S", Math.PI / 2], ["SE", Math.PI / 4],
+  ];
 
-    for (let r = 0; r < ROWS; r++) {
-      for (let c = 0; c < COLS; c++) {
-        const { state } = g[r][c];
-        const x = c * cW + cW / 2, y = r * cH + cH / 2;
-        const radius = Math.min(cW, cH) * 0.36;
-        // Shadow
-        ctx.beginPath(); ctx.arc(x + 1, y + 1, radius, 0, Math.PI * 2);
-        ctx.fillStyle = "rgba(0,0,0,0.08)"; ctx.fill();
-        // Plant
-        ctx.beginPath(); ctx.arc(x, y, radius, 0, Math.PI * 2);
-        ctx.fillStyle = state === 0 ? "#7ab840" : state === 1 ? (disease === "fusarium_wilt" ? "#c89030" : "#8a7020") : "#3a2010";
-        ctx.fill();
-        if (state === 1) {
-          ctx.strokeStyle = disease === "fusarium_wilt" ? "#e0a040" : "#b09030";
-          ctx.lineWidth = 1.5; ctx.stroke();
-        }
-      }
-    }
-  }, [timeStep, disease, envFactor]);
+  const setWind = (label, angle) => {
+    windAngle.current = angle;
+    setWindDir(label);
+    if (baseGridRef.current && seedsRef.current.length > 0)
+      rebuild(baseGridRef.current, seedsRef.current, angle);
+  };
 
   return (
-    <canvas ref={ref} width={640} height={300}
-      className="sim-canvas" style={{ width: "100%", height: "auto" }} />
+    <div style={{ display: "flex", flexDirection: "column" }}>
+      {/* Controls toolbar */}
+      <div style={{
+        display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center",
+        padding: "10px 14px", fontSize: 12, color: "var(--text-muted)",
+        background: "var(--bg)", borderBottom: "1px solid var(--color-border-secondary)",
+      }}>
+        {/* Pattern — left */}
+        <div style={{ display: "flex", gap: 5, alignItems: "center", flexShrink: 0 }}>
+          {[["random", "Random"], ["cornrow", "Cornrow"]].map(([val, label]) => (
+            <button key={val} onClick={() => setPattern(val)} style={{
+              fontSize: 11, padding: "5px 11px", borderRadius: "var(--radius-sm)", cursor: "pointer",
+              whiteSpace: "nowrap",
+              border: `1px solid ${pattern === val ? "var(--green-400)" : "var(--color-border-primary)"}`,
+              background: pattern === val ? "var(--green-50)" : "transparent",
+              color: pattern === val ? "var(--green-mid)" : "var(--text-muted)",
+              fontWeight: pattern === val ? 500 : 400,
+              transition: "background 0.12s, color 0.12s, border-color 0.12s",
+            }}>{label}</button>
+          ))}
+        </div>
+
+        <div style={{ width: 1, height: 18, background: "var(--color-border-secondary)", flexShrink: 0 }} />
+
+        {/* Density slider — grows */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flex: "1 1 140px", minWidth: 0 }}>
+          <span style={{ whiteSpace: "nowrap" }}>Plant density</span>
+          <input
+            type="range" min={0.3} max={1.0} step={0.05} value={density}
+            onChange={e => { const v = +e.target.value; densityRef.current = v; setDensity(v); }}
+            style={{ flex: 1, minWidth: 60, accentColor: "var(--green)" }}
+          />
+          <span style={{ minWidth: 30, textAlign: "right" }}>{Math.round(density * 100)}%</span>
+        </div>
+
+        {/* Play, Reset, Re-run */}
+        <div style={{ display: "flex", gap: 5, alignItems: "center", flexShrink: 0 }}>
+          <button onClick={onPlayPause} className="play-btn" style={{ fontSize: 11, padding: "5px 11px" }}>
+            {playing ? <Pause size={11} /> : <Play size={11} />}
+            {playing ? "Pause" : "Play"}
+          </button>
+          <button onClick={() => doReset(density, pattern)} style={{
+            fontSize: 11, padding: "5px 12px", borderRadius: "var(--radius-sm)", cursor: "pointer",
+            whiteSpace: "nowrap", border: "1px solid var(--color-border-primary)",
+            background: "transparent", color: "var(--text-muted)",
+            transition: "background 0.12s",
+          }}>Clear seeds</button>
+          <button onClick={onRerun} style={{
+            display: "flex", alignItems: "center", gap: 5,
+            fontSize: 11, padding: "5px 12px", borderRadius: "var(--radius-sm)", cursor: "pointer",
+            whiteSpace: "nowrap", border: "1px solid var(--color-border-primary)",
+            background: "transparent", color: "var(--text-muted)",
+            transition: "background 0.12s",
+          }}>
+            <RefreshCcw size={12} />
+            Restart sim
+          </button>
+        </div>
+      </div>
+
+      {/* Legend */}
+      <div style={{
+        display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10,
+        padding: "7px 14px", color: "var(--text-muted)",
+        background: "var(--bg2)", borderBottom: "1px solid var(--color-border-secondary)",
+      }}>
+        {[["#4a9020", "Healthy"], ["#d4c520", "Early infection"], ["#f07818", "Advanced"], ["#cc1212", "Highly advanced"]].map(([color, label]) => (
+          <div key={label} style={{ display: "flex", alignItems: "center", gap: 5 }}>
+            <div style={{ width: 9, height: 9, borderRadius: "50%", background: color, flexShrink: 0 }} />
+            <span style={{ fontSize: 11 }}>{label}</span>
+          </div>
+        ))}
+        <span style={{ fontSize: 11, opacity: 0.5, marginLeft: "auto", whiteSpace: "nowrap" }}>
+          Tap / click to seed infection
+        </span>
+      </div>
+
+      {/* Canvas + overlays */}
+      <div style={{ position: "relative" }}>
+        <canvas
+          ref={ref} width={640} height={320} className="sim-canvas"
+          style={{ width: "100%", height: "auto", display: "block", cursor: "crosshair", touchAction: "none" }}
+          onPointerDown={onDown} onPointerUp={onUp} onPointerLeave={onUp}
+        />
+
+        {/* Wind button — upper-left, BS only */}
+        {disease === "black_sigatoka" && (
+          <button
+            onClick={() => setShowWind(v => !v)}
+            style={{
+              position: "absolute", top: 10, left: 10,
+              display: "flex", alignItems: "center", gap: 5,
+              padding: "5px 10px", borderRadius: "var(--radius-sm)",
+              fontSize: 11, fontWeight: 500, cursor: "pointer",
+              background: showWind ? "rgba(99,153,34,0.18)" : "rgba(0,0,0,0.45)",
+              border: `1px solid ${showWind ? "rgba(99,153,34,0.55)" : "rgba(255,255,255,0.18)"}`,
+              color: showWind ? "#a8d870" : "rgba(255,255,255,0.82)",
+              backdropFilter: "blur(6px)",
+              transition: "background 0.15s, border-color 0.15s, color 0.15s",
+            }}
+          >
+            <Wind size={13} />
+            Wind
+            <span style={{
+              marginLeft: 3, paddingLeft: 7,
+              borderLeft: "1px solid rgba(255,255,255,0.2)",
+              opacity: 0.9, letterSpacing: "0.03em",
+            }}>
+              {{ "N": "↑", "NE": "↗", "E": "→", "SE": "↘", "S": "↓", "SW": "↙", "W": "←", "NW": "↖" }[windDir]} {windDir}
+            </span>
+          </button>
+        )}
+
+        {/* Wind direction popup */}
+        {disease === "black_sigatoka" && showWind && (
+          <div style={{
+            position: "absolute", top: 40, left: 10, zIndex: 10,
+            background: "rgba(12,20,12,0.88)", backdropFilter: "blur(10px)",
+            border: "1px solid rgba(255,255,255,0.12)", borderRadius: 10,
+            padding: 8, boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
+          }}>
+            <div style={{
+              display: "grid", gridTemplateColumns: "repeat(3, 44px)", gap: 4,
+            }}>
+              {WIND_DIRS.map(([label, angle], i) => {
+                if (label === null) {
+                  return (
+                    <button key={i} onClick={() => setShowWind(false)} style={{
+                      width: 44, height: 36, borderRadius: "var(--radius-sm)",
+                      cursor: "pointer", display: "flex", alignItems: "center",
+                      justifyContent: "center",
+                      border: "1px solid rgba(255,255,255,0.15)",
+                      background: "rgba(255,255,255,0.06)",
+                      color: "rgba(255,255,255,0.55)",
+                      transition: "background 0.12s",
+                    }}>
+                      <X size={13} />
+                    </button>
+                  );
+                }
+                const active = windDir === label;
+                return (
+                  <button key={label} onClick={() => { setWind(label, angle); setShowWind(false); }} style={{
+                    width: 44, height: 36, borderRadius: "var(--radius-sm)",
+                    cursor: "pointer", fontSize: 10, fontWeight: active ? 700 : 400,
+                    lineHeight: 1,
+                    border: `1px solid ${active ? "rgba(99,153,34,0.7)" : "rgba(255,255,255,0.12)"}`,
+                    background: active ? "rgba(99,153,34,0.22)" : "rgba(255,255,255,0.05)",
+                    color: active ? "#a8d870" : "rgba(255,255,255,0.65)",
+                    transition: "background 0.12s, color 0.12s, border-color 0.12s",
+                  }}>{label}</button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {computing && (
+          <div style={{
+            position: "absolute", inset: 0, display: "flex", alignItems: "center",
+            justifyContent: "center", gap: 8,
+            background: "rgba(0,0,0,0.55)", fontSize: 13, color: "#b8d4b8",
+          }}>
+            <Loader size={15} style={{ animation: "spin 1s linear infinite" }} />
+            Computing…
+          </div>
+        )}
+      </div>
+
+    </div>
   );
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
 //  HOME PAGE
 // ══════════════════════════════════════════════════════════════════════════════
-function HomePage({ onNavigate }) {
+function HomePage({ onNavigate, reduceMotion }) {
   return (
     <div className="page-wrapper">
       {/* Hero */}
@@ -352,39 +806,12 @@ function HomePage({ onNavigate }) {
           transition={{ delay: 0.3, duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
         >
           <Magnet strength={4}>
-            <button className="btn-primary" onClick={() => onNavigate("upload")}>
-              Try the simulation <MoveRight size={14} style={{ display: "inline", verticalAlign: "middle", marginLeft: 4 }} />
-            </button>
-          </Magnet>
-          <Magnet strength={4}>
-            <button className="btn-secondary" onClick={() => onNavigate("about")}>
+            <button className="btn-secondary" onClick={() => document.getElementById("home-diseases").scrollIntoView({ behavior: "smooth" })}>
               Learn more
             </button>
           </Magnet>
         </motion.div>
       </div>
-
-      {/* Stats */}
-      <motion.div
-        className="stats-row"
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.45, duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-      >
-        {[
-          { count: 82, suffix: "K+", label: "Mindanao hectares monitored", icon: <Sprout size={18} /> },
-          { count: 16000, suffix: "", label: "SCA simulation cells", icon: <Waypoints size={18} /> },
-          { count: 30, suffix: " mo", label: "Disease progression modeled", icon: <Orbit size={18} /> },
-        ].map(({ count, suffix, label, icon }) => (
-          <div className="stat-card" key={label}>
-            <div className="stat-icon">{icon}</div>
-            <div className="stat-num">
-              <CountUp to={count} suffix={suffix} duration={2} />
-            </div>
-            <div className="stat-label">{label}</div>
-          </div>
-        ))}
-      </motion.div>
 
       {/* Features */}
       <div className="features">
@@ -448,38 +875,6 @@ function HomePage({ onNavigate }) {
         </div>
       </div>
 
-      {/* Pipeline */}
-      <div className="pipeline">
-        <div className="pipeline-inner">
-          <FadeIn>
-            <div className="section-label"><ShinyText text="System pipeline" speed={5} /></div>
-            <h2 className="section-title">How S-Aging works</h2>
-          </FadeIn>
-          <div className="pipeline-steps">
-            {[
-              { n: "01", t: "Upload", d: "Banana leaf photo via web app", icon: <CloudUpload size={16} /> },
-              { n: "02", t: "CLAHE + GC", d: "Contrast & gamma preprocessing", icon: <Sparkles size={16} /> },
-              { n: "03", t: "YOLOv11-seg", d: "Pixel-level disease mask extraction", icon: <ScanSearch size={16} /> },
-              { n: "04", t: "SCA Engine", d: "Disease spread simulation on UV grid", icon: <Waypoints size={16} /> },
-              { n: "05", t: "3D Viewer", d: "Interactive temporal visualization", icon: <Atom size={16} /> },
-            ].map(({ n, t, d, icon }, i) => (
-              <motion.div
-                className="pipeline-step"
-                key={n}
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true, margin: "-40px" }}
-                transition={{ duration: 0.4, delay: i * 0.09, ease: [0.16, 1, 0.3, 1] }}
-              >
-                <div className="pipeline-step-num">{icon}</div>
-                <div className="pipeline-step-title">{t}</div>
-                <div className="pipeline-step-desc">{d}</div>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-      </div>
-
       {/* ── Tech marquee strip ── */}
       <div className="home-marquee-wrap" aria-hidden="true">
         <div className="home-marquee-track">
@@ -522,7 +917,7 @@ function HomePage({ onNavigate }) {
       </div>
 
       {/* Diseases */}
-      <div className="diseases">
+      <div className="diseases" id="home-diseases">
         <FadeIn>
           <div className="section-label"><ShinyText text="Target diseases" speed={5} /></div>
           <h2 className="section-title">Two pathogens, two spread models</h2>
@@ -539,17 +934,22 @@ function HomePage({ onNavigate }) {
               <div className="disease-tag" style={{ background: COLORS.amber50, color: "#854F0B" }}>
                 Fusarium Wilt TR4
               </div>
-              <div className="disease-name">Panama Disease</div>
+              <div className="disease-name">Panama Disease / Fusarium Wilt</div>
               <div className="disease-sci">Fusarium oxysporum f. sp. cubense</div>
               <div className="disease-desc">
-                Soil-borne pathogen that colonizes xylem vessels and blocks water transport.
-                Chlorosis appears FIRST at the leaf margins (oldest leaves, furthest from xylem
-                supply) and spreads laterally along the margin before creeping inward.
+                Fusarium Wilt is a soil-borne disease that affects the vascular tissue of the plant, preventing
+                the water from reaching the leaves. The most observed characteristic of this disease in banana plants
+                is that the leaves turn yellow and eventually die. Chlorosis appears in the margins and progresses inward,
+                eventually covering the entire leaf.
               </div>
             </div>
             <div className="disease-card-footer">
               <div className="disease-meta">Spread model <strong>Marginal-lateral</strong></div>
               <div className="disease-meta">Origin <strong>Root → xylem → margins</strong></div>
+              <div className="disease-meta">Onset temperature <strong>20°C</strong></div>
+              <div className="disease-meta">Optimal temperature <strong>24–30°C</strong></div>
+              <div className="disease-meta">Humidity onset <strong>≥75%</strong></div>
+              <div className="disease-meta">Optimal humidity <strong>≥85%</strong></div>
             </div>
           </motion.div>
           <motion.div
@@ -563,19 +963,56 @@ function HomePage({ onNavigate }) {
               <div className="disease-tag" style={{ background: COLORS.green50, color: COLORS.green600 }}>
                 Black Sigatoka
               </div>
-              <div className="disease-name">Sigatoka Leaf Spot</div>
-              <div className="disease-sci">Pseudocercospora fijiensis</div>
+              <div className="disease-name">Black Sigatoka</div>
+              <div className="disease-sci">Mycosphaerella fijiensis</div>
               <div className="disease-desc">
-                Foliar fungal disease forming linear streaks that expand longitudinally.
-                Simulated via dual σ-β spatial weights for streak growth and ovoid lesion
-                coalescence.
+                Black Sigatoka is a leaf spot disease that affects the leaves of banana plants. It is characterized by
+                the apperance of small streaks or spots to which then expands into dark patches and reduces the plants
+                ability to photosynthesize. The pattern of spread starts at the edges of the leaves and progresses inward
+                toward the midrib.
               </div>
             </div>
             <div className="disease-card-footer">
               <div className="disease-meta">Spread model <strong>Longitudinal σ-β</strong></div>
               <div className="disease-meta">Origin <strong>Leaf surface spots</strong></div>
+              <div className="disease-meta">Onset temperature <strong>20°C</strong></div>
+              <div className="disease-meta">Optimal temperature <strong>26–28°C</strong></div>
+              <div className="disease-meta">Humidity onset <strong>≥70%</strong></div>
+              <div className="disease-meta">Optimal humidity <strong>≥90%</strong></div>
             </div>
           </motion.div>
+        </div>
+      </div>
+
+      {/* Pipeline */}
+      <div className="pipeline">
+        <div className="pipeline-inner">
+          <FadeIn>
+            <div className="section-label"><ShinyText text="System pipeline" speed={5} /></div>
+            <h2 className="section-title">How S-Aging works</h2>
+          </FadeIn>
+          <div className="pipeline-steps">
+            {[
+              { n: "01", t: "Upload", d: "Banana leaf photo via web app", icon: <CloudUpload size={16} /> },
+              { n: "02", t: "CLAHE + GC", d: "Contrast & gamma preprocessing", icon: <Sparkles size={16} /> },
+              { n: "03", t: "YOLOv11-seg", d: "Pixel-level disease mask extraction", icon: <ScanSearch size={16} /> },
+              { n: "04", t: "SCA Engine", d: "Disease spread simulation on UV grid", icon: <Waypoints size={16} /> },
+              { n: "05", t: "3D Viewer", d: "Interactive temporal visualization", icon: <Atom size={16} /> },
+            ].map(({ n, t, d, icon }, i) => (
+              <motion.div
+                className="pipeline-step"
+                key={n}
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, margin: "-40px" }}
+                transition={{ duration: 0.4, delay: i * 0.09, ease: [0.16, 1, 0.3, 1] }}
+              >
+                <div className="pipeline-step-num">{icon}</div>
+                <div className="pipeline-step-title">{t}</div>
+                <div className="pipeline-step-desc">{d}</div>
+              </motion.div>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -626,13 +1063,15 @@ function HomePage({ onNavigate }) {
           </div>
         </div>
       </div>
-      <CurvedLoop
-        marqueeText="SCAN · YOUR · LEAF · TODAY! · FOR · ECONOMY · AND · FOR · SCIENCE! · "
-        speed={1.2}
-        curveAmount={60}
-        direction="left"
-        className="home-marquee-text"
-      />
+      {!reduceMotion && (
+        <CurvedLoop
+          marqueeText="SCAN · YOUR · LEAF · TODAY! · FOR · ECONOMY · AND · FOR · SCIENCE! · "
+          speed={1.2}
+          curveAmount={60}
+          direction="left"
+          className="home-marquee-text"
+        />
+      )}
     </div>
   );
 }
@@ -773,6 +1212,27 @@ function UploadPage({ onNavigate, setSimConfig }) {
           onChange={(e) => handleFileSelect(e.target.files?.[0])}
         />
 
+        {/* ── Tips for best results ── */}
+        <div className="upload-tips-section">
+          <div className="upload-tips-heading">Tips for best detection accuracy</div>
+          <div className="upload-tips-grid">
+            {[
+              { icon: Sun, color: "#BA7517", title: "Good lighting", desc: "Diffused natural light — avoid harsh shadows or flash glare on the leaf surface." },
+              { icon: Maximize2, color: "#1D9E75", title: "Fill the frame", desc: "The leaf should cover at least 60% of the image area. Avoid busy backgrounds." },
+              { icon: Leaf, color: "#639922", title: "Show the margins", desc: "Capture the full leaf including edges — margin chlorosis is key for Fusarium Wilt." },
+              { icon: ImageIcon, color: "#3B6D11", title: "JPG · PNG · WEBP", desc: "Max 10 MB · Minimum 640×640 px recommended for YOLOv11 segmentation." },
+            ].map(({ icon: Icon, color, title, desc }) => (
+              <div className="upload-tip-card" key={title}>
+                <div className="upload-tip-icon" style={{ background: color + "1A", color }}>
+                  <Icon size={15} />
+                </div>
+                <div className="upload-tip-title">{title}</div>
+                <div className="upload-tip-desc">{desc}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
         {/* Upload zone */}
         {!uploadedImage ? (
           <div
@@ -912,27 +1372,6 @@ function UploadPage({ onNavigate, setSimConfig }) {
           Run disease simulation →
         </button>
 
-        {/* ── Tips for best results ── */}
-        <div className="upload-tips-section">
-          <div className="upload-tips-heading">Tips for best detection accuracy</div>
-          <div className="upload-tips-grid">
-            {[
-              { icon: Sun, color: "#BA7517", title: "Good lighting", desc: "Diffused natural light — avoid harsh shadows or flash glare on the leaf surface." },
-              { icon: Maximize2, color: "#1D9E75", title: "Fill the frame", desc: "The leaf should cover at least 60% of the image area. Avoid busy backgrounds." },
-              { icon: Leaf, color: "#639922", title: "Show the margins", desc: "Capture the full leaf including edges — margin chlorosis is key for Fusarium Wilt." },
-              { icon: ImageIcon, color: "#3B6D11", title: "JPG · PNG · WEBP", desc: "Max 10 MB · Minimum 640×640 px recommended for YOLOv11 segmentation." },
-            ].map(({ icon: Icon, color, title, desc }) => (
-              <div className="upload-tip-card" key={title}>
-                <div className="upload-tip-icon" style={{ background: color + "1A", color }}>
-                  <Icon size={15} />
-                </div>
-                <div className="upload-tip-title">{title}</div>
-                <div className="upload-tip-desc">{desc}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-
       </div>
     </div>
   );
@@ -1002,8 +1441,8 @@ function LeafViewer3D({ frame, disease }) {
     const container = mountRef.current;
     if (!container) return;
 
-    const W = container.clientWidth || 900;
-    const H = 320;
+    const W = container.clientWidth || 960;
+    const H = container.clientHeight || 480;
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(W, H);
@@ -1063,7 +1502,7 @@ function LeafViewer3D({ frame, disease }) {
       const center = box.getCenter(new THREE.Vector3());
       const size = box.getSize(new THREE.Vector3());
       const dist = Math.max(size.x, size.y) * 1.7;
-      camera.position.set(center.x, center.y, center.z + dist);
+      camera.position.set(center.x, center.y + dist * 0.95, center.z + dist * 0.25);
       camera.lookAt(center);
       controls.target.copy(center);
       controls.update();
@@ -1079,8 +1518,9 @@ function LeafViewer3D({ frame, disease }) {
 
     const onResize = () => {
       const w = container.clientWidth;
-      renderer.setSize(w, H);
-      camera.aspect = w / H;
+      const h = container.clientHeight || H;
+      renderer.setSize(w, h);
+      camera.aspect = w / h;
       camera.updateProjectionMatrix();
     };
     window.addEventListener("resize", onResize);
@@ -1106,7 +1546,7 @@ function LeafViewer3D({ frame, disease }) {
   return (
     <div
       ref={mountRef}
-      style={{ width: "100%", height: 320, borderRadius: 8, overflow: "hidden", cursor: "grab" }}
+      style={{ width: "100%", height: 480, borderRadius: 8, overflow: "hidden", cursor: "grab" }}
     />
   );
 }
@@ -1126,6 +1566,7 @@ function SimulationPage({ config }) {
   const [timeStep, setTimeStep] = useState(0);        // index into frames[]
   const [playing, setPlaying] = useState(false);
   const [activeTab, setActiveTab] = useState("leaf");
+  const [fieldStats, setFieldStats] = useState(null); // array[31] of {healthy,early,advanced,hi}
 
   const framesRef = useRef([]);
   const playRef = useRef(null);
@@ -1134,6 +1575,34 @@ function SimulationPage({ config }) {
 
   const isFW = disease === "fusarium_wilt";
   const diseaseName = isFW ? "Fusarium Wilt TR4" : "Black Sigatoka";
+
+  const handleRerun = useCallback(() => {
+    cancelledRef.current = true;
+    clearInterval(playRef.current);
+    setTimeout(() => {
+      cancelledRef.current = false;
+      framesRef.current = [];
+      setFrames([]); setTimeStep(0); setPlaying(false); setSimState("loading"); setErrorMsg(null);
+      streamSimulation(
+        { disease, temp, rh, density, detections, maskGrid, imgWidth, imgHeight, imageData },
+        (frame) => {
+          if (cancelledRef.current) return;
+          framesRef.current = [...framesRef.current, frame];
+          setFrames([...framesRef.current]);
+          setTimeStep(framesRef.current.length - 1);
+        },
+        () => { if (!cancelledRef.current) setSimState("complete"); },
+        (err) => { if (!cancelledRef.current) { setSimState("error"); setErrorMsg(err.message); } }
+      );
+    }, 50);
+  }, [disease, temp, rh, density, detections, maskGrid, imgWidth, imgHeight, imageData]);
+
+  const handlePlayPause = useCallback(() => {
+    setPlaying(p => {
+      if (!p && timeStep >= 30) setTimeStep(0);
+      return !p;
+    });
+  }, [timeStep]);
 
   // ── Stream simulation frames from FastAPI backend on mount ────────────────
   useEffect(() => {
@@ -1277,22 +1746,26 @@ function SimulationPage({ config }) {
                 <button key={t} className={`tab ${activeTab === t ? "active" : ""}`}
                   onClick={() => setActiveTab(t)}>{label}</button>
               ))}
-              <button
-                className="play-btn"
-                style={{ marginLeft: "auto" }}
-                disabled={simState !== "complete"}
-                onClick={() => {
-                  if (timeStep >= frames.length - 1) setTimeStep(0);
-                  setPlaying(p => !p);
-                }}
-              >
-                {playing ? <Pause size={12} /> : <Play size={12} />}
-                {playing ? "Pause" : "Play"}
-              </button>
+              {activeTab === "leaf" && (
+                <button
+                  className="play-btn"
+                  style={{ marginLeft: "auto" }}
+                  disabled={simState !== "complete"}
+                  onClick={handlePlayPause}
+                >
+                  {playing ? <Pause size={12} /> : <Play size={12} />}
+                  {playing ? "Pause" : "Play"}
+                </button>
+              )}
             </div>
 
             <div className="sim-viewer">
-              <div className="sim-canvas-wrap" style={{ position: "relative", minHeight: 240, background: "#0C1A0C", borderRadius: 8 }}>
+              <div className="sim-canvas-wrap" style={{
+                position: "relative",
+                minHeight: activeTab === "field" ? 0 : 480,
+                background: activeTab === "field" ? "transparent" : "#0C1A0C",
+                borderRadius: 8,
+              }}>
                 {activeTab === "leaf" ? (
                   <>
                     {/* Interactive 3-D leaf viewer */}
@@ -1341,8 +1814,13 @@ function SimulationPage({ config }) {
                 ) : (
                   <FieldView
                     disease={disease}
-                    timeStep={Math.round(month * 3.33)}
+                    timeStep={timeStep}
                     envFactor={E_ENV > 0 ? Math.min(1.5, E_ENV * 1.3) : (rh >= 80 && temp >= 25 ? 1.4 : 0.8)}
+                    temp={temp}
+                    onStatsUpdate={setFieldStats}
+                    playing={playing}
+                    onPlayPause={handlePlayPause}
+                    onRerun={handleRerun}
                   />
                 )}
               </div>
@@ -1391,85 +1869,127 @@ function SimulationPage({ config }) {
                   </span>
                 </div>
                 <div className="sim-toolbar-right">
-                  <button className="icon-btn" title="Re-run simulation" onClick={() => {
-                    cancelledRef.current = true;
-                    clearInterval(playRef.current);
-                    setTimeout(() => {
-                      cancelledRef.current = false;
-                      framesRef.current = [];
-                      setFrames([]); setTimeStep(0); setPlaying(false); setSimState("loading"); setErrorMsg(null);
-                      streamSimulation(
-                        { disease, temp, rh, density, detections, maskGrid, imgWidth, imgHeight, imageData },
-                        (frame) => {
-                          if (cancelledRef.current) return;
-                          framesRef.current = [...framesRef.current, frame];
-                          setFrames([...framesRef.current]);
-                          setTimeStep(framesRef.current.length - 1);
-                        },
-                        () => { if (!cancelledRef.current) setSimState("complete"); },
-                        (err) => { if (!cancelledRef.current) { setSimState("error"); setErrorMsg(err.message); } }
-                      );
-                    }, 50);
-                  }}>
-                    <RefreshCcw size={14} />
-                  </button>
+                  {activeTab === "leaf" && (
+                    <button className="icon-btn" title="Re-run simulation" onClick={handleRerun}>
+                      <RefreshCcw size={14} />
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
 
-            {/* Disease spread sparkline charts */}
+            {/* Disease spread over time */}
             <div className="metrics-card" style={{ marginTop: 12 }}>
               <div className="metrics-card-title">Disease spread over time</div>
-              <Sparkline data={infHistory} color={isFW ? "#BA7517" : "#639922"} />
-              <div style={{ marginTop: 8 }}>
-                <Sparkline data={necHistory} color="#5F5E5A" />
-              </div>
-              <div style={{ display: "flex", gap: 16, marginTop: 10 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-muted)" }}>
-                  <div style={{ width: 12, height: 3, borderRadius: 2, background: isFW ? "#BA7517" : "#639922" }} />
-                  Infected %
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-muted)" }}>
-                  <div style={{ width: 12, height: 3, borderRadius: 2, background: "#5F5E5A" }} />
-                  Necrotic %
-                </div>
-              </div>
+              {activeTab === "field" && fieldStats ? (
+                <>
+                  <FieldSparkline data={fieldStats} timeStep={timeStep} />
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 14px", marginTop: 8 }}>
+                    {[
+                      { color: "#4a9020", label: "Healthy" },
+                      { color: "#c4b010", label: "Early" },
+                      { color: "#f07818", label: "Advanced" },
+                      { color: "#cc1212", label: "Highly advanced" },
+                    ].map(({ color, label }) => (
+                      <div key={label} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--text-muted)" }}>
+                        <div style={{ width: 12, height: 3, borderRadius: 2, background: color }} />
+                        {label}
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <Sparkline data={infHistory} color={isFW ? "#BA7517" : "#639922"} />
+                  <div style={{ marginTop: 8 }}>
+                    <Sparkline data={necHistory} color="#5F5E5A" />
+                  </div>
+                  <div style={{ display: "flex", gap: 16, marginTop: 10 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-muted)" }}>
+                      <div style={{ width: 12, height: 3, borderRadius: 2, background: isFW ? "#BA7517" : "#639922" }} />
+                      Infected %
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-muted)" }}>
+                      <div style={{ width: 12, height: 3, borderRadius: 2, background: "#5F5E5A" }} />
+                      Necrotic %
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
           </div>
 
           {/* ── Sidebar ── */}
           <div className="sim-sidebar">
-            {/* Leaf health metrics */}
+            {/* Leaf health metrics / Field health breakdown */}
             <div className="metrics-card">
-              <div className="metrics-card-title">Leaf health metrics</div>
-              {[
-                { label: "Healthy tissue", val: healthyPct + "%", cls: "good" },
-                { label: "Infected area", val: infPct + "%", cls: parseFloat(infPct) > 30 ? "bad" : "warn" },
-                { label: "Necrotic area", val: necPct + "%", cls: parseFloat(necPct) > 20 ? "bad" : "warn" },
-              ].map(({ label, val, cls }) => (
-                <div key={label} className="metric-row">
-                  <span className="metric-name">{label}</span>
-                  <span className={`metric-val ${cls}`}>{val}</span>
-                </div>
-              ))}
-              <div style={{ marginTop: 14 }}>
-                <div className="progress-bar-bg">
-                  <div style={{ display: "flex", height: 5 }}>
-                    <div className="progress-bar-fill" style={{ width: healthyPct + "%", background: COLORS.green200 }} />
-                    <div className="progress-bar-fill" style={{ width: infPct + "%", background: COLORS.amber100 }} />
-                    <div className="progress-bar-fill" style={{ width: necPct + "%", background: COLORS.gray400 }} />
+              {activeTab === "field" && fieldStats ? (() => {
+                const s = fieldStats[Math.min(timeStep, fieldStats.length - 1)];
+                return (
+                  <>
+                    <div className="metrics-card-title">Field health — Month {month}</div>
+                    {[
+                      { label: "Healthy", val: s.healthy, color: "#4a9020", cls: "good" },
+                      { label: "Early infection", val: s.early, color: "#c4b010", cls: s.early > 20 ? "warn" : "" },
+                      { label: "Advanced", val: s.advanced, color: "#f07818", cls: s.advanced > 10 ? "warn" : "" },
+                      { label: "Highly advanced", val: s.hi, color: "#cc1212", cls: s.hi > 5 ? "bad" : "" },
+                    ].map(({ label, val, cls }) => (
+                      <div key={label} className="metric-row">
+                        <span className="metric-name">{label}</span>
+                        <span className={`metric-val ${cls}`}>{val}%</span>
+                      </div>
+                    ))}
+                    <div style={{ marginTop: 14 }}>
+                      <div className="progress-bar-bg">
+                        <div style={{ display: "flex", height: 5 }}>
+                          <div className="progress-bar-fill" style={{ width: s.healthy + "%", background: "#4a9020" }} />
+                          <div className="progress-bar-fill" style={{ width: s.early + "%", background: "#c4b010" }} />
+                          <div className="progress-bar-fill" style={{ width: s.advanced + "%", background: "#f07818" }} />
+                          <div className="progress-bar-fill" style={{ width: s.hi + "%", background: "#cc1212" }} />
+                        </div>
+                      </div>
+                      <div className="legend" style={{ marginTop: 10 }}>
+                        <div className="legend-item"><div className="legend-dot" style={{ background: "#4a9020" }} />Healthy</div>
+                        <div className="legend-item"><div className="legend-dot" style={{ background: "#c4b010" }} />Early</div>
+                        <div className="legend-item"><div className="legend-dot" style={{ background: "#f07818" }} />Advanced</div>
+                        <div className="legend-item"><div className="legend-dot" style={{ background: "#cc1212" }} />Highly adv.</div>
+                      </div>
+                    </div>
+                  </>
+                );
+              })() : (
+                <>
+                  <div className="metrics-card-title">Leaf health metrics</div>
+                  {[
+                    { label: "Healthy tissue", val: healthyPct + "%", cls: "good" },
+                    { label: "Infected area", val: infPct + "%", cls: parseFloat(infPct) > 30 ? "bad" : "warn" },
+                    { label: "Necrotic area", val: necPct + "%", cls: parseFloat(necPct) > 20 ? "bad" : "warn" },
+                  ].map(({ label, val, cls }) => (
+                    <div key={label} className="metric-row">
+                      <span className="metric-name">{label}</span>
+                      <span className={`metric-val ${cls}`}>{val}</span>
+                    </div>
+                  ))}
+                  <div style={{ marginTop: 14 }}>
+                    <div className="progress-bar-bg">
+                      <div style={{ display: "flex", height: 5 }}>
+                        <div className="progress-bar-fill" style={{ width: healthyPct + "%", background: COLORS.green200 }} />
+                        <div className="progress-bar-fill" style={{ width: infPct + "%", background: COLORS.amber100 }} />
+                        <div className="progress-bar-fill" style={{ width: necPct + "%", background: COLORS.gray400 }} />
+                      </div>
+                    </div>
+                    <div className="legend" style={{ marginTop: 10 }}>
+                      <div className="legend-item"><div className="legend-dot" style={{ background: COLORS.green200 }} />Healthy</div>
+                      <div className="legend-item"><div className="legend-dot" style={{ background: COLORS.amber100 }} />Infected</div>
+                      <div className="legend-item"><div className="legend-dot" style={{ background: COLORS.gray400 }} />Necrotic</div>
+                    </div>
                   </div>
-                </div>
-                <div className="legend" style={{ marginTop: 10 }}>
-                  <div className="legend-item"><div className="legend-dot" style={{ background: COLORS.green200 }} />Healthy</div>
-                  <div className="legend-item"><div className="legend-dot" style={{ background: COLORS.amber100 }} />Infected</div>
-                  <div className="legend-item"><div className="legend-dot" style={{ background: COLORS.gray400 }} />Necrotic</div>
-                </div>
-              </div>
+                </>
+              )}
             </div>
 
-            {/* Disease progression stage */}
-            <div className="metrics-card">
+            {/* Disease progression stage — leaf tab only */}
+            {activeTab === "leaf" && <div className="metrics-card">
               <div className="metrics-card-title">Disease progression stage</div>
               <div className="stage-badge-row">
                 <motion.div
@@ -1504,7 +2024,7 @@ function SimulationPage({ config }) {
               <div className="stage-track-labels">
                 <span>Month 0</span><span>Month {month}</span><span>Month 30</span>
               </div>
-            </div>
+            </div>}
 
             {/* Simulation parameters + env factors */}
             <div className="env-display">
@@ -1712,15 +2232,33 @@ function AboutPage() {
         {/* ── ISO-25010 quality pillars ── */}
         <FadeIn delay={0.2}>
           <div className="about-section">
-            <h3><BookOpen size={18} style={{ color: "var(--green-400)" }} /> ISO-25010 Quality Pillars</h3>
+            <h3 style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <BookOpen size={18} style={{ color: "var(--green-400)" }} /> ISO-25010 Quality Pillars
+              <a
+                href="https://iso25000.com/index.php/en/iso-25000-standards/iso-25010"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  display: "inline-flex", alignItems: "center", gap: 4,
+                  fontSize: 11, fontWeight: 500, padding: "3px 10px",
+                  borderRadius: "var(--radius-sm)", border: "1px solid var(--color-border-secondary)",
+                  color: "var(--text-muted)", textDecoration: "none",
+                  transition: "border-color 0.15s, color 0.15s",
+                }}
+                onMouseEnter={e => { e.currentTarget.style.color = "var(--green-400)"; e.currentTarget.style.borderColor = "var(--green-400)"; }}
+                onMouseLeave={e => { e.currentTarget.style.color = "var(--text-muted)"; e.currentTarget.style.borderColor = "var(--color-border-secondary)"; }}
+              >
+                <ExternalLink size={11} /> ISO standard
+              </a>
+            </h3>
             <div className="about-iso-grid">
               {[
-                { pillar: "Functional Suitability", desc: "Disease detection and simulation behave as specified across all test cases.", score: 92 },
-                { pillar: "Performance Efficiency", desc: "YOLOv11 inference runs under 800 ms; SCA simulation streams in real time.", score: 88 },
-                { pillar: "Interaction Capability", desc: "Usability tested with agricultural students — rated 4.4/5 on SUS scale.", score: 88 },
-                { pillar: "Maintainability", desc: "Modular architecture — detection, simulation, and auth are independently deployable.", score: 90 },
-                { pillar: "Security", desc: "Supabase Auth + custom session tokens with 24-hour expiry and activity logging.", score: 91 },
-              ].map(({ pillar, desc, score }, i) => (
+                { pillar: "Functional Suitability", desc: "The degree to which a product provides functions that meet stated and implied needs — covering functional completeness, correctness, and appropriateness." },
+                { pillar: "Performance Efficiency", desc: "Performance relative to the amount of resources used under stated conditions, including time behavior, resource utilization, and capacity." },
+                { pillar: "Interaction Capability", desc: "The degree to which a product can be used by specified users to achieve goals with effectiveness, efficiency, and satisfaction in a specified context of use." },
+                { pillar: "Maintainability", desc: "The degree of effectiveness and efficiency with which a product can be modified to improve it, correct it, or adapt it to changes in environment and requirements." },
+                { pillar: "Security", desc: "The degree to which a product protects information and data so that persons or systems have data access appropriate to their type and level of authorization." },
+              ].map(({ pillar, desc }, i) => (
                 <motion.div
                   className="about-iso-card"
                   key={pillar}
@@ -1732,16 +2270,6 @@ function AboutPage() {
                   <div className="about-iso-header">
                     <CheckCircle2 size={14} style={{ color: "var(--green-400)", flexShrink: 0 }} />
                     <span className="about-iso-pillar">{pillar}</span>
-                    <span className="about-iso-score">{score}%</span>
-                  </div>
-                  <div className="about-iso-bar-bg">
-                    <motion.div
-                      className="about-iso-bar-fill"
-                      initial={{ width: 0 }}
-                      whileInView={{ width: `${score}%` }}
-                      viewport={{ once: true }}
-                      transition={{ delay: i * 0.06 + 0.2, duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
-                    />
                   </div>
                   <div className="about-iso-desc">{desc}</div>
                 </motion.div>
@@ -1762,11 +2290,16 @@ export default function SAgingApp() {
   const [simConfig, setSimConfig] = useState({ disease: "black_sigatoka", temp: 26, rh: 85, density: "medium", detections: null, maskGrid: null });
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [theme, setTheme] = useState(() => localStorage.getItem("saging-theme") || "light");
+  const [reduceMotion, setReduceMotion] = useState(() => localStorage.getItem("saging-reduce-motion") === "true");
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
     localStorage.setItem("saging-theme", theme);
   }, [theme]);
+
+  useEffect(() => {
+    localStorage.setItem("saging-reduce-motion", reduceMotion);
+  }, [reduceMotion]);
 
   // ── Auth state ─────────────────────────────────────────────────────────
   // Single credential: Supabase JWT (session.access_token). Auth-service validates it on each request.
@@ -1939,19 +2472,19 @@ export default function SAgingApp() {
         )}
       </AnimatePresence>
 
-      <Antigravity visible={["home", "about", "profile"].includes(page)} />
+      {!reduceMotion && <Antigravity visible={["home", "about", "profile"].includes(page)} />}
 
-      {["upload", "simulation"].includes(page) && (
+      {!reduceMotion && ["upload", "simulation"].includes(page) && (
         <div className="banana-swatch-bg" aria-hidden="true">
           <div className="banana-swatch-inner" />
         </div>
       )}
 
-      {page === "home" && <HomePage onNavigate={navigate} />}
+      {page === "home" && <HomePage onNavigate={navigate} reduceMotion={reduceMotion} />}
       {page === "upload" && <UploadPage onNavigate={navigate} setSimConfig={setSimConfig} />}
       {page === "simulation" && <SimulationPage config={simConfig} />}
       {page === "about" && <AboutPage />}
-      {page === "profile" && <ProfilePage auth={auth} onLogout={handleLogout} onNavigate={navigate} setSimConfig={setSimConfig} theme={theme} setTheme={setTheme} />}
+      {page === "profile" && <ProfilePage auth={auth} onLogout={handleLogout} onNavigate={navigate} setSimConfig={setSimConfig} theme={theme} setTheme={setTheme} reduceMotion={reduceMotion} setReduceMotion={setReduceMotion} />}
 
       <footer className="footer">
         <span>S-Aging · FEU Institute of Technology · 2026</span>

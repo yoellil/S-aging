@@ -194,8 +194,8 @@ class LeafRenderer:
         intensity: np.ndarray,
         disease: str,
         leaf_img_arr=None,
-        width: int = 900,
-        height: int = 320,
+        width: int = 960,
+        height: int = 480,
         jpeg_quality: int = 90,
         **kwargs,
     ) -> bytes:
