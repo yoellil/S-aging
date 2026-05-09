@@ -14,16 +14,45 @@ import numpy as np
 import pyvista as pv
 from PIL import Image, ImageFilter
 
+try:
+    from scipy.ndimage import gaussian_filter1d as _gf1d
+    _HAS_GF1D = True
+except ImportError:
+    _HAS_GF1D = False
+
 pv.OFF_SCREEN = True
 
 
-# ── Disease palette (RGB uint8) ───────────────────────────────────────────────
-_FW_INF_LO = np.array([225, 220,  70], dtype=np.float32)
-_FW_INF_HI = np.array([185, 120,  25], dtype=np.float32)
-_BS_INF_LO = np.array([160, 140,  45], dtype=np.float32)
-_BS_INF_HI = np.array([ 80,  40,  10], dtype=np.float32)
-_NEC_LO    = np.array([ 95,  55,  18], dtype=np.float32)
-_NEC_HI    = np.array([ 25,  12,   4], dtype=np.float32)
+def _blur_h(arr: np.ndarray, sigma_x: float, sigma_y: float) -> np.ndarray:
+    """
+    Anisotropic Gaussian blur with unambiguous axis semantics.
+    axis=1 (columns) = horizontal direction = leaf-length direction.
+    axis=0 (rows)    = vertical  direction = leaf-width  direction.
+    Uses scipy when available; falls back to PIL GaussianBlur (x,y) convention.
+    """
+    a = arr.astype(np.float32)
+    if _HAS_GF1D:
+        a = _gf1d(a, sigma=sigma_x, axis=1)  # horizontal
+        a = _gf1d(a, sigma=sigma_y, axis=0)  # vertical
+        return a
+    # PIL fallback — (x_radius, y_radius) per Pillow docs
+    img = Image.fromarray(a.clip(0, 255).astype(np.uint8), mode="RGBA")
+    img = img.filter(ImageFilter.GaussianBlur(radius=(sigma_x, sigma_y)))
+    return np.array(img, dtype=np.float32)
+
+
+# ── Disease palette (RGB float32) ────────────────────────────────────────────
+# Black Sigatoka: pale yellowish-olive early streaks → dark brown/near-black lesions
+_BS_INF_LO = np.array([232, 218,  22], dtype=np.float32)   # vivid yellow (early chlorosis)
+_BS_INF_HI = np.array([  5,   2,   1], dtype=np.float32)   # near-black (mature "Black" Sigatoka lesion)
+_BS_NEC_LO = np.array([  7,   3,   1], dtype=np.float32)   # black necrotic centre
+_BS_NEC_HI = np.array([ 52,  48,  45], dtype=np.float32)   # dark ash-grey (desiccated tissue)
+
+# Fusarium Wilt TR4: vivid yellow chlorosis → orange-brown wilting → rust-brown necrosis
+_FW_INF_LO = np.array([252, 230,  14], dtype=np.float32)   # sulfur-yellow (chlorosis onset)
+_FW_INF_HI = np.array([195,  72,  10], dtype=np.float32)   # warm orange-brown (wilting)
+_FW_NEC_LO = np.array([112,  46,  12], dtype=np.float32)   # rust-brown necrosis
+_FW_NEC_HI = np.array([ 48,  18,   5], dtype=np.float32)   # dark brown (dead tissue)
 
 _BG_HEX  = "#0B180B"
 
@@ -44,6 +73,7 @@ class LeafRenderer:
     def __init__(self):
         self.mesh         = self._build_leaf_mesh()
         self.base_texture = self._build_base_leaf_texture()
+        self._spot_noise  = self._build_spot_noise()
 
     # ── 3D leaf mesh (Phase 5) ────────────────────────────────────────────────
 
@@ -151,40 +181,152 @@ class LeafRenderer:
         base[~leaf_mask] = (11, 24, 10)
         return base
 
+    # ── Pre-computed spot noise for BS irregular blotches ────────────────────
+
+    def _build_spot_noise(self, seed: int = 42) -> np.ndarray:
+        """
+        Multi-scale organic noise (TEX_H × TEX_W) in [0, 1].
+        Used to break up the smooth alpha of BS lesions into irregular spots.
+        """
+        rng = np.random.default_rng(seed)
+        # Coarse blobs
+        coarse = rng.random((self.TEX_H // 6, self.TEX_W // 6)).astype(np.float32)
+        coarse = np.array(
+            Image.fromarray((coarse * 255).astype(np.uint8)).resize(
+                (self.TEX_W, self.TEX_H), Image.BILINEAR
+            ), dtype=np.float32
+        ) / 255.0
+        # Fine grain
+        fine = rng.random((self.TEX_H, self.TEX_W)).astype(np.float32) * 0.22
+        return np.clip(coarse * 0.78 + fine, 0.0, 1.0)
+
     # ── Disease overlay → RGBA at texture resolution ─────────────────────────
 
     def _disease_overlay_texture(self, grid, intensity, disease) -> np.ndarray:
-        """Bilinear-upsample the SCA state to texture resolution as RGBA."""
-        n    = self.ROWS * self.COLS
-        flat = grid.ravel().astype(np.int32)
-        iv   = intensity.ravel().astype(np.float32)
+        """
+        Upsample the SCA state to texture resolution with disease-accurate colours.
 
-        ov = np.zeros((n, 4), dtype=np.float32)
+        Black Sigatoka — two-pass composite:
+          Pass 1 (halo): infected/necrotic cells → bright yellow, blurred widely
+                         to produce the characteristic chlorotic ring around each lesion.
+          Pass 2 (lesion): infected cells → olive-yellow→dark-brown streak (anisotropic
+                           blur + spot noise); necrotic → near-black→grey desiccation.
+          The halo is placed under the dark lesion so the yellow only shows at edges.
 
-        infected = flat == 1
-        if infected.any():
-            ivf = iv[infected, np.newaxis]
-            if disease == "fusarium_wilt":
-                col = _FW_INF_LO + ivf * (_FW_INF_HI - _FW_INF_LO)
-            else:
-                col = _BS_INF_LO + ivf * (_BS_INF_HI - _BS_INF_LO)
-            ov[infected, :3] = col
-            ov[infected,  3] = np.clip(0.50 + 0.45 * iv[infected], 0.50, 0.92) * 255
+        Fusarium Wilt — single pass: vivid yellow chlorosis → orange-brown wilting,
+                        soft isotropic blur for the margin-inward gradient.
+        """
+        is_fw = disease == "fusarium_wilt"
+        flat  = grid.ravel().astype(np.int32)
+        iv    = intensity.ravel().astype(np.float32)
 
-        necrotic = flat == 2
-        if necrotic.any():
-            ivn = iv[necrotic, np.newaxis]
-            col = _NEC_LO + ivn * (_NEC_HI - _NEC_LO)
-            ov[necrotic, :3] = col
-            ov[necrotic,  3] = np.clip(0.78 + 0.18 * iv[necrotic], 0.78, 0.96) * 255
+        infected_flat = flat == 1
+        necrotic_flat = flat == 2
 
-        rgba_sca = ov.reshape(self.ROWS, self.COLS, 4).astype(np.uint8)
+        # ── Fusarium Wilt: two-pass (yellow chlorosis band + orange-brown wilt) ─
+        # FW signature: vivid yellow band sweeping inward from both leaf margins,
+        # maturing into orange-brown/rust as the xylem blockage progresses.
+        # No spots — smooth gradient bands are the defining visual pattern.
+        if is_fw:
+            iv2d  = iv.reshape(self.ROWS, self.COLS)
+            inf2d = infected_flat.reshape(self.ROWS, self.COLS)
+            nec2d = necrotic_flat.reshape(self.ROWS, self.COLS)
 
-        pil = Image.fromarray(rgba_sca, mode="RGBA").resize(
-            (self.TEX_W, self.TEX_H), Image.BICUBIC
+            # Pass 1 — vivid yellow chlorosis band.
+            # axis=0 (rows = leaf WIDTH = V-axis) gets the wide sigma so the yellow
+            # band sweeps from both margins inward toward the midrib.
+            # axis=1 (cols = leaf LENGTH) gets a narrow sigma — FW bands run across
+            # the leaf, not along it.
+            chloro = np.zeros((self.ROWS, self.COLS, 4), dtype=np.uint8)
+            if inf2d.any():
+                chloro[inf2d] = [252, 230, 14, 230]
+            chloro_arr = np.array(
+                Image.fromarray(chloro, mode="RGBA")
+                .resize((self.TEX_W, self.TEX_H), Image.BICUBIC),
+                dtype=np.float32,
+            )
+            chloro_arr = _blur_h(chloro_arr, sigma_x=5.0, sigma_y=20.0)
+            chloro_img = Image.fromarray(chloro_arr.clip(0, 255).astype(np.uint8), mode="RGBA")
+
+            # Pass 2 — orange-brown wilting / rust-brown necrosis overlay.
+            # Alpha for infected cells ramps from 0 → 0.88 with intensity so
+            # early cells show pure yellow and mature cells show orange-brown.
+            wilt = np.zeros((self.ROWS, self.COLS, 4), dtype=np.float32)
+            if inf2d.any():
+                col = _FW_INF_LO + iv2d[inf2d, np.newaxis] * (_FW_INF_HI - _FW_INF_LO)
+                wilt[inf2d, :3] = col
+                wilt[inf2d, 3]  = np.clip(0.88 * iv2d[inf2d], 0.0, 0.88) * 255
+            if nec2d.any():
+                col = _FW_NEC_LO + iv2d[nec2d, np.newaxis] * (_FW_NEC_HI - _FW_NEC_LO)
+                wilt[nec2d, :3] = col
+                wilt[nec2d, 3]  = np.clip(0.82 + 0.15 * iv2d[nec2d], 0.82, 0.97) * 255
+            wilt_arr = np.array(
+                Image.fromarray(wilt.astype(np.uint8), mode="RGBA")
+                .resize((self.TEX_W, self.TEX_H), Image.BICUBIC),
+                dtype=np.float32,
+            )
+            wilt_arr = _blur_h(wilt_arr, sigma_x=4.0, sigma_y=9.0)
+            wilt_img = Image.fromarray(wilt_arr.clip(0, 255).astype(np.uint8), mode="RGBA")
+
+            # Composite: yellow chlorosis base, orange-brown wilt on top
+            canvas = Image.alpha_composite(chloro_img, wilt_img)
+            return np.array(canvas, dtype=np.uint8)
+
+        # ── Black Sigatoka: two-pass (yellow halo + dark streak lesion) ───────
+        iv2d  = iv.reshape(self.ROWS, self.COLS)
+        inf2d = infected_flat.reshape(self.ROWS, self.COLS)
+        nec2d = necrotic_flat.reshape(self.ROWS, self.COLS)
+
+        # Pass 1 — yellow chlorosis halo.
+        # Alpha fades as intensity rises: only the advancing front shows yellow;
+        # mature high-intensity lesions are black and no longer chlorotic.
+        halo = np.zeros((self.ROWS, self.COLS, 4), dtype=np.float32)
+        if inf2d.any():
+            # Full yellow at iv=0 (early), fades to 0 at iv≥0.65 (mature black lesion)
+            halo_a = np.clip((1.0 - 1.55 * iv2d[inf2d]) * 215, 0, 215)
+            halo[inf2d, 0] = 242; halo[inf2d, 1] = 222; halo[inf2d, 2] = 16
+            halo[inf2d, 3] = halo_a
+        if nec2d.any():
+            # Necrotic cells shed a dim yellow only if still young (low intensity)
+            halo_a = np.clip((0.5 - iv2d[nec2d]) * 140, 0, 140)
+            halo[nec2d, 0] = 210; halo[nec2d, 1] = 185; halo[nec2d, 2] = 10
+            halo[nec2d, 3] = halo_a
+        halo_arr = np.array(
+            Image.fromarray(halo.astype(np.uint8), mode="RGBA")
+            .resize((self.TEX_W, self.TEX_H), Image.BICUBIC),
+            dtype=np.float32,
         )
-        pil = pil.filter(ImageFilter.GaussianBlur(radius=2.0))
-        return np.array(pil, dtype=np.uint8)
+        # sigma_x=42 (horizontal = leaf-length): wide halo along veins
+        # sigma_y=9  (vertical  = leaf-width):   moderate cross-vein spread
+        halo_arr = _blur_h(halo_arr, sigma_x=42, sigma_y=9)
+        halo_img = Image.fromarray(halo_arr.clip(0, 255).astype(np.uint8), mode="RGBA")
+
+        # Pass 2 — black spots and streaks.
+        # NEAREST upscale preserves cell boundaries so individual SCA cells
+        # remain as distinct spots rather than blending into a smooth patch.
+        # A very wide horizontal / very narrow vertical blur then elongates
+        # each spot into the characteristic vein-parallel black streak.
+        lesion = np.zeros((self.ROWS, self.COLS, 4), dtype=np.float32)
+        if inf2d.any():
+            col = _BS_INF_LO + iv2d[inf2d, np.newaxis] * (_BS_INF_HI - _BS_INF_LO)
+            lesion[inf2d, :3] = col
+            lesion[inf2d, 3] = np.clip(0.50 + 0.48 * iv2d[inf2d], 0.50, 0.98) * 255
+        if nec2d.any():
+            col = _BS_NEC_LO + iv2d[nec2d, np.newaxis] * (_BS_NEC_HI - _BS_NEC_LO)
+            lesion[nec2d, :3] = col
+            lesion[nec2d, 3] = np.clip(0.88 + 0.10 * iv2d[nec2d], 0.88, 0.98) * 255
+        lesion_img = Image.fromarray(lesion.astype(np.uint8), mode="RGBA")
+        lesion_img = lesion_img.resize((self.TEX_W, self.TEX_H), Image.NEAREST)
+        arr = np.array(lesion_img, dtype=np.float32)
+        # Elongate along axis=1 (columns = horizontal = leaf-length direction)
+        # sigma_x=55px ≈ 9 cells wide; sigma_y=0.9px keeps vertical extent very tight
+        arr = _blur_h(arr, sigma_x=55, sigma_y=0.9)
+        arr[..., 3] = np.clip(arr[..., 3] * (0.20 + 0.80 * self._spot_noise), 0, 255)
+        lesion_img = Image.fromarray(arr.clip(0, 255).astype(np.uint8), mode="RGBA")
+
+        # Composite: yellow chlorosis halo underneath, black streaks on top.
+        canvas = Image.alpha_composite(halo_img, lesion_img)
+        return np.array(canvas, dtype=np.uint8)
 
     # ── Public frame render ───────────────────────────────────────────────────
 
@@ -193,7 +335,7 @@ class LeafRenderer:
         grid: np.ndarray,
         intensity: np.ndarray,
         disease: str,
-        leaf_img_arr=None,
+        leaf_img_arr=None,   # accepted but unused — leaf is rendered synthetically
         width: int = 960,
         height: int = 480,
         jpeg_quality: int = 90,

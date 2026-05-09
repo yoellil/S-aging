@@ -159,31 +159,86 @@ function CyclingWord({ words, interval = 2200 }) {
   );
 }
 
-// ── SPARKLINE CHART ──────────────────────────────────────────────────────────
-function Sparkline({ data, color }) {
+// ── SIM SPARKLINE ─────────────────────────────────────────────────────────────
+function SimSparkline({ infData, necData, timeStep, months = 30, infColor = "#639922" }) {
   const ref = useRef(null);
   useEffect(() => {
     const canvas = ref.current;
-    if (!canvas || !data.length) return;
+    if (!canvas || !infData?.length) return;
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = Math.round(rect.width * dpr);
+    canvas.height = Math.round(rect.height * dpr);
     const ctx = canvas.getContext("2d");
-    const W = canvas.width, H = canvas.height;
+    ctx.scale(dpr, dpr);
+    const W = rect.width, H = rect.height;
     ctx.clearRect(0, 0, W, H);
-    const max = Math.max(...data, 1);
-    ctx.beginPath();
-    data.forEach((v, i) => {
-      const x = (i / (data.length - 1)) * W;
-      const y = H - (v / max) * (H - 4) - 2;
-      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+
+    const PL = 32, PR = 14, PT = 8, PB = 22;
+    const cw = W - PL - PR, ch = H - PT - PB;
+    const n = infData.length;
+    const xOf = i => PL + (n < 2 ? cw / 2 : (i / (n - 1)) * cw);
+    const yOf = v => PT + ch - (v / 100) * ch;
+
+    const isDark = document.documentElement.dataset.theme === "dark";
+    const gridCol = isDark ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.07)";
+    const labelCol = isDark ? "rgba(255,255,255,0.40)" : "rgba(0,0,0,0.40)";
+
+    // Grid + Y labels
+    ctx.font = "10px sans-serif";
+    ctx.textAlign = "right";
+    [0, 25, 50, 75, 100].forEach(v => {
+      const y = yOf(v);
+      ctx.beginPath(); ctx.moveTo(PL, y); ctx.lineTo(PL + cw, y);
+      ctx.strokeStyle = gridCol; ctx.lineWidth = 1; ctx.stroke();
+      ctx.fillStyle = labelCol;
+      ctx.fillText(v + "%", PL - 5, y + 3.5);
     });
-    ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.stroke();
-    ctx.lineTo(W, H); ctx.lineTo(0, H); ctx.closePath();
-    ctx.fillStyle = color + "18"; ctx.fill();
-  }, [data, color]);
-  return <canvas ref={ref} width={280} height={60} style={{ width: "100%", height: 60, display: "block" }} />;
+
+    // X labels — 4 ticks spanning chosen duration
+    ctx.textAlign = "center";
+    const mStep = months / 3;
+    [0, mStep, mStep * 2, months].forEach(m => {
+      const i = Math.min(Math.round((m / months) * (n - 1)), n - 1);
+      ctx.fillStyle = labelCol;
+      ctx.fillText("M" + Math.round(m), xOf(i), PT + ch + PB - 5);
+    });
+
+    // Draw a series with fill
+    const drawSeries = (data, color) => {
+      ctx.beginPath();
+      data.forEach((v, i) => {
+        const x = xOf(i), y = yOf(v);
+        i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+      });
+      ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.lineJoin = "round"; ctx.stroke();
+      ctx.lineTo(xOf(n - 1), PT + ch); ctx.lineTo(xOf(0), PT + ch); ctx.closePath();
+      ctx.fillStyle = color + "18"; ctx.fill();
+    };
+
+    drawSeries(infData, infColor);
+    drawSeries(necData ?? [], "#5F5E5A");
+
+    // Dashed cursor
+    const ti = Math.min(timeStep, n - 1);
+    const cx = xOf(ti);
+    ctx.beginPath(); ctx.moveTo(cx, PT); ctx.lineTo(cx, PT + ch);
+    ctx.strokeStyle = isDark ? "rgba(255,255,255,0.28)" : "rgba(0,0,0,0.20)";
+    ctx.lineWidth = 1; ctx.setLineDash([3, 3]); ctx.stroke(); ctx.setLineDash([]);
+
+    // Dots at cursor
+    [[infData, infColor], [necData ?? [], "#5F5E5A"]].forEach(([d, col]) => {
+      const v = d[ti] ?? 0;
+      ctx.beginPath(); ctx.arc(cx, yOf(v), 3.5, 0, Math.PI * 2);
+      ctx.fillStyle = col; ctx.fill();
+    });
+  }, [infData, necData, timeStep, months, infColor]);
+
+  return <canvas ref={ref} style={{ width: "100%", height: 140, display: "block" }} />;
 }
 
 // ── FIELD SPARKLINE ───────────────────────────────────────────────────────────
-function FieldSparkline({ data, timeStep }) {
+function FieldSparkline({ data, timeStep, months = 30 }) {
   const ref = useRef(null);
   useEffect(() => {
     const canvas = ref.current;
@@ -201,8 +256,12 @@ function FieldSparkline({ data, timeStep }) {
     const PL = 32, PR = 14, PT = 8, PB = 22;
     const cw = W - PL - PR, ch = H - PT - PB;
     const n = data.length;
+    // X positions are always based on total months so the chart doesn't rescale
     const xOf = i => PL + (n < 2 ? cw / 2 : (i / (n - 1)) * cw);
     const yOf = v => PT + ch - (v / 100) * ch;
+
+    // Only show data up to the current slider position
+    const visibleCount = Math.min(timeStep + 1, n);
 
     const isDark = document.documentElement.dataset.theme === "dark";
     const gridCol = isDark ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.07)";
@@ -219,15 +278,16 @@ function FieldSparkline({ data, timeStep }) {
       ctx.fillText(v + "%", PL - 5, y + 3.5);
     });
 
-    // X axis labels
+    // X axis labels — 4 evenly spaced ticks across the chosen duration
     ctx.textAlign = "center";
-    [0, 10, 20, 30].forEach(m => {
-      const i = Math.min(m, n - 1);
+    const step = months / 3;
+    [0, step, step * 2, months].forEach(m => {
+      const i = Math.min(Math.round(m), n - 1);
       ctx.fillStyle = labelCol;
-      ctx.fillText("M" + m, xOf(i), PT + ch + PB - 5);
+      ctx.fillText("M" + Math.round(m), xOf(i), PT + ch + PB - 5);
     });
 
-    // 4 data lines
+    // 4 data lines — only draw up to visibleCount
     const SERIES = [
       { key: "healthy", color: "#4a9020" },
       { key: "early", color: "#c4b010" },
@@ -236,27 +296,22 @@ function FieldSparkline({ data, timeStep }) {
     ];
     SERIES.forEach(({ key, color }) => {
       ctx.beginPath();
-      data.forEach((d, i) => {
-        const x = xOf(i), y = yOf(d[key]);
+      for (let i = 0; i < visibleCount; i++) {
+        const x = xOf(i), y = yOf(data[i][key]);
         i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
-      });
+      }
       ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.lineJoin = "round"; ctx.stroke();
     });
 
-    // Dashed cursor at current month
+    // Dots at current position
     const ti = Math.min(timeStep, n - 1);
     const cx = xOf(ti);
-    ctx.beginPath(); ctx.moveTo(cx, PT); ctx.lineTo(cx, PT + ch);
-    ctx.strokeStyle = isDark ? "rgba(255,255,255,0.28)" : "rgba(0,0,0,0.20)";
-    ctx.lineWidth = 1; ctx.setLineDash([3, 3]); ctx.stroke(); ctx.setLineDash([]);
-
-    // Dots at cursor
     SERIES.forEach(({ key, color }) => {
       const v = data[ti]?.[key] ?? 0;
       ctx.beginPath(); ctx.arc(cx, yOf(v), 3.5, 0, Math.PI * 2);
       ctx.fillStyle = color; ctx.fill();
     });
-  }, [data, timeStep]);
+  }, [data, timeStep, months]);
 
   return <canvas ref={ref} style={{ width: "100%", height: 160, display: "block" }} />;
 }
@@ -266,8 +321,8 @@ const FIELD_COLS = 80;
 const FIELD_ROWS = 40;
 const FIELD_STEPS_PER_MONTH = 6;
 // Age thresholds (in SCA steps) for color bands
-const FIELD_AGE_ORANGE = FIELD_STEPS_PER_MONTH * 10;  // ~10 months infected
-const FIELD_AGE_RED = FIELD_STEPS_PER_MONTH * 20;  // ~20 months infected
+const FIELD_AGE_ORANGE = FIELD_STEPS_PER_MONTH * 3;  // ~3 months infected
+const FIELD_AGE_RED = FIELD_STEPS_PER_MONTH * 7;    // ~7 months infected
 
 function makeFieldGrid(density) {
   return Array.from({ length: FIELD_ROWS }, () =>
@@ -301,7 +356,7 @@ function fieldCellColor(state, age) {
   return "#cc1212";                              // Red    – Highly advanced
 }
 
-function stepFieldGrid(g, disease, env, windAngle, maxRange = 1) {
+function stepFieldGrid(g, disease, env, windAngle, maxRange = 1, durationScale = 1) {
   const next = g.map(row => row.map(cell => ({ ...cell })));
 
   // Wind label = origin of wind; spores travel in the opposite direction.
@@ -328,18 +383,18 @@ function stepFieldGrid(g, disease, env, windAngle, maxRange = 1) {
           for (const [dr, dc, w] of bsWeights) {
             const nr = r + dr, nc = c + dc;
             if (nr >= 0 && nr < FIELD_ROWS && nc >= 0 && nc < FIELD_COLS && g[nr][nc].hasPlant && g[nr][nc].state === 1)
-              prob += 0.06 * w * env;
+              prob += 0.06 * w * env * durationScale;
           }
           for (const dist of [2, 3]) {
             const nr = Math.round(r - dist * wy), nc = Math.round(c - dist * wx);
             if (nr >= 0 && nr < FIELD_ROWS && nc >= 0 && nc < FIELD_COLS && g[nr][nc].hasPlant && g[nr][nc].state === 1)
-              prob += (0.02 / dist) * env;
+              prob += (0.02 / dist) * env * durationScale;
           }
         } else {
           for (const [dr, dc] of NBRS) {
             const nr = r + dr, nc = c + dc;
             if (nr >= 0 && nr < FIELD_ROWS && nc >= 0 && nc < FIELD_COLS && g[nr][nc].hasPlant && g[nr][nc].state === 1)
-              prob += 0.08 * env;
+              prob += 0.08 * env * durationScale;
           }
         }
 
@@ -358,9 +413,9 @@ function stepFieldGrid(g, disease, env, windAngle, maxRange = 1) {
                 const len = Math.sqrt(dc * dc + dr * dr);
                 const dot = (dc / len) * wx + (dr / len) * wy;
                 const w = 0.05 + 0.95 * Math.max(0, (dot + 1) / 2);
-                prob += 0.06 * w * decay * env;
+                prob += 0.06 * w * decay * env * durationScale;
               } else {
-                prob += 0.08 * decay * env;
+                prob += 0.08 * decay * env * durationScale;
               }
             }
           }
@@ -374,18 +429,21 @@ function stepFieldGrid(g, disease, env, windAngle, maxRange = 1) {
   return next;
 }
 
-function computeFieldSnapshots(seededGrid, disease, envFactor, windAngle, maxRange = 1, temp = 27) {
+function computeFieldSnapshots(seededGrid, disease, envFactor, windAngle, maxRange = 1, temp = 27, months = 30) {
   const isFW = disease === "fusarium_wilt";
   const T_MIN = isFW ? 20.0 : 16.6;
   const T_MAX = isFW ? 35.0 : 30.3;
   const outOfRange = temp < T_MIN || temp > T_MAX;
   // Outside viable range = dormant/latent: still spreads, but very slowly
   const env = outOfRange ? 0.08 : Math.max(0.15, envFactor);
+  // Scale spread rate so disease paces across the full duration
+  // (calibrated for 30 months — longer durations spread slower per step)
+  const durationScale = 30 / Math.max(1, months);
   const snaps = [seededGrid];
   let cur = seededGrid;
-  for (let m = 1; m <= 30; m++) {
+  for (let m = 1; m <= months; m++) {
     for (let s = 0; s < FIELD_STEPS_PER_MONTH; s++)
-      cur = stepFieldGrid(cur, disease, env, windAngle, maxRange);
+      cur = stepFieldGrid(cur, disease, env, windAngle, maxRange, durationScale);
     snaps.push(cur);
   }
   return snaps;
@@ -407,7 +465,7 @@ function fieldSnapshotStats(snap) {
   return { healthy: p(healthy), early: p(early), advanced: p(advanced), hi: p(hi) };
 }
 
-function FieldView({ disease, timeStep, envFactor, temp, onStatsUpdate, playing, onPlayPause, onRerun }) {
+function FieldView({ disease, timeStep, envFactor, temp, months, onStatsUpdate, playing, onPlayPause, onRerun }) {
   const ref = useRef(null);
   const animRef = useRef(null);
   const snapsRef = useRef(null);
@@ -416,6 +474,7 @@ function FieldView({ disease, timeStep, envFactor, temp, onStatsUpdate, playing,
   const diseaseRef = useRef(disease);
   const envRef = useRef(envFactor);
   const tempRef = useRef(temp);
+  const monthsRef = useRef(months);
   const densityRef = useRef(0.75);
   const maxRangeRef = useRef(1);
   const baseGridRef = useRef(null);
@@ -432,6 +491,7 @@ function FieldView({ disease, timeStep, envFactor, temp, onStatsUpdate, playing,
   useEffect(() => { diseaseRef.current = disease; }, [disease]);
   useEffect(() => { envRef.current = envFactor; }, [envFactor]);
   useEffect(() => { tempRef.current = temp; }, [temp]);
+  useEffect(() => { monthsRef.current = months; }, [months]);
   useEffect(() => { timeStepRef.current = timeStep; }, [timeStep]);
   useEffect(() => {
     maxRangeRef.current = pattern === "cornrow"
@@ -446,7 +506,7 @@ function FieldView({ disease, timeStep, envFactor, temp, onStatsUpdate, playing,
         const hit = seeds.some(({ cx, cy }) => Math.abs(r - cy) <= 2 && Math.abs(c - cx) <= 2);
         return hit && cell.hasPlant ? { ...cell, state: 1, age: 0 } : { ...cell };
       }));
-      const snaps = computeFieldSnapshots(seeded, diseaseRef.current, envRef.current, angle, maxRangeRef.current, tempRef.current);
+      const snaps = computeFieldSnapshots(seeded, diseaseRef.current, envRef.current, angle, maxRangeRef.current, tempRef.current, monthsRef.current);
       snapsRef.current = snaps;
       displayRef.current = snaps[Math.min(timeStepRef.current, snaps.length - 1)];
       onStatsUpdate?.(snaps.map(fieldSnapshotStats));
@@ -1034,7 +1094,7 @@ function HomePage({ onNavigate, reduceMotion }) {
             <h2 className="home-cta-heading">Analyze your first banana leaf today</h2>
             <p className="home-cta-desc">
               Upload a photo — YOLOv11 detects the disease in seconds, then our Stochastic
-              Cellular Automata engine simulates how it spreads over 30 months across your plantation.
+              Cellular Automata engine simulates how it spreads across your plantation month by month.
             </p>
             <div className="home-cta-actions">
               <Magnet strength={4}>
@@ -1084,6 +1144,7 @@ function UploadPage({ onNavigate, setSimConfig }) {
   const [temp, setTemp] = useState(26);
   const [rh, setRh] = useState(85);
   const [density, setDensity] = useState("medium");
+  const [duration, setDuration] = useState("30");
   const [drag, setDrag] = useState(false);
   const [uploadedImage, setUploadedImage] = useState(null);
   const [detecting, setDetecting] = useState(false);
@@ -1343,6 +1404,14 @@ function UploadPage({ onNavigate, setSimConfig }) {
               </select>
             </div>
             <div className="env-field">
+              <label>Simulation duration (Months)</label>
+              <select value={duration} onChange={e => setDuration(e.target.value)}>
+                <option value="30">30 months</option>
+                <option value="60">60 months</option>
+                <option value="90">90 months</option>
+              </select>
+            </div>
+            <div className="env-field">
               <label>Predicted spread rate</label>
               <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 8 }}>
                 <div style={{ width: 8, height: 8, borderRadius: "50%", background: eff.color }} />
@@ -1354,12 +1423,13 @@ function UploadPage({ onNavigate, setSimConfig }) {
 
         <button
           className="analyze-btn"
+          disabled={false}
           onClick={() => {
             const imageData = uploadedImage?.url
               ? uploadedImage.url.split(",")[1] ?? null
               : null;
             setSimConfig({
-              disease: selected, temp, rh, density,
+              disease: selected, temp, rh, density, months: +duration,
               detections: detections ?? null,
               maskGrid: maskGrid ?? null,
               imgWidth: imgRef.current?.naturalWidth ?? null,
@@ -1405,8 +1475,15 @@ function LeafViewer3D({ frame, disease }) {
 
     const gridU8 = typeof gridData === "string" ? decodeB64(gridData) : gridData;
     const intensityU8 = typeof intensityData === "string" ? decodeB64(intensityData) : intensityData;
-    const cellW = 0.5 * _TEX / _LEAF_COLS; // ~1.6 px
-    const cellH = _TEX / _LEAF_ROWS;       // ~5.12 px
+    // GLTF UV bounds from scene.gltf accessor: U 0.2546–0.7454, V 0.0–1.0
+    // The 3D model is rotated to display horizontally, so the mask axes
+    // are swapped to align with the on-screen orientation:
+    //   SCA cols (c) = leaf LENGTH → texture X (U axis)
+    //   SCA rows (r) = leaf WIDTH  → texture Y (V axis)
+    const UV_X_MIN = 0.2546, UV_X_RANGE = 0.4908;
+    const UV_Y_MIN = 0.0,    UV_Y_RANGE = 1.0;
+    const cellW = UV_X_RANGE * _TEX / _LEAF_COLS;
+    const cellH = UV_Y_RANGE * _TEX / _LEAF_ROWS;
 
     for (let r = 0; r < _LEAF_ROWS; r++) {
       for (let c = 0; c < _LEAF_COLS; c++) {
@@ -1415,8 +1492,8 @@ function LeafViewer3D({ frame, disease }) {
         if (state === 0) continue;
 
         const iv = intensityU8[idx] / 255;
-        const px = (0.25 + (c / _LEAF_COLS) * 0.5) * _TEX;
-        const py = (r / _LEAF_ROWS) * _TEX;
+        const px = (UV_X_MIN + (c / _LEAF_COLS) * UV_X_RANGE) * _TEX;
+        const py = (UV_Y_MIN + (r / _LEAF_ROWS) * UV_Y_RANGE) * _TEX;
 
         let ri, gi, bi, alpha;
         if (state === 1) {
@@ -1496,13 +1573,18 @@ function LeafViewer3D({ frame, disease }) {
       gltf.scene.traverse((child) => {
         if (child.isMesh) child.material = mat;
       });
+      // Rotate 90° around Z so the leaf's long axis (which is vertical in the
+      // GLTF file) becomes horizontal on screen, matching a real horizontal leaf photo.
+      gltf.scene.rotation.z = -Math.PI / 2;
       scene.add(gltf.scene);
 
       const box = new THREE.Box3().setFromObject(gltf.scene);
       const center = box.getCenter(new THREE.Vector3());
       const size = box.getSize(new THREE.Vector3());
-      const dist = Math.max(size.x, size.y) * 1.7;
-      camera.position.set(center.x, center.y + dist * 0.95, center.z + dist * 0.25);
+      // After rotation the leaf is wider than tall; pull camera back enough to
+      // frame the full width and add a slight forward tilt for a 3-D feel.
+      const dist = Math.max(size.x, size.y) * 1.6;
+      camera.position.set(center.x, center.y + dist * 0.9, center.z + dist * 0.3);
       camera.lookAt(center);
       controls.target.copy(center);
       controls.update();
@@ -1555,7 +1637,7 @@ function LeafViewer3D({ frame, disease }) {
 //  SIMULATION PAGE  — PyVista backend-driven
 // ══════════════════════════════════════════════════════════════════════════════
 function SimulationPage({ config }) {
-  const { disease = "black_sigatoka", temp = 26, rh = 85, density = "medium",
+  const { disease = "black_sigatoka", temp = 26, rh = 85, density = "medium", months = 30,
     detections = null, maskGrid = null, imgWidth = null, imgHeight = null,
     imageData = null } = config || {};
 
@@ -1575,6 +1657,7 @@ function SimulationPage({ config }) {
 
   const isFW = disease === "fusarium_wilt";
   const diseaseName = isFW ? "Fusarium Wilt TR4" : "Black Sigatoka";
+  const expectedFrames = Math.max(10, Math.round(months * 55 / 30)) + 1;
 
   const handleRerun = useCallback(() => {
     cancelledRef.current = true;
@@ -1584,7 +1667,7 @@ function SimulationPage({ config }) {
       framesRef.current = [];
       setFrames([]); setTimeStep(0); setPlaying(false); setSimState("loading"); setErrorMsg(null);
       streamSimulation(
-        { disease, temp, rh, density, detections, maskGrid, imgWidth, imgHeight, imageData },
+        { disease, temp, rh, density, months, detections, maskGrid, imgWidth, imgHeight, imageData },
         (frame) => {
           if (cancelledRef.current) return;
           framesRef.current = [...framesRef.current, frame];
@@ -1599,7 +1682,7 @@ function SimulationPage({ config }) {
 
   const handlePlayPause = useCallback(() => {
     setPlaying(p => {
-      if (!p && timeStep >= 30) setTimeStep(0);
+      if (!p && timeStep >= frames.length - 1) setTimeStep(0);
       return !p;
     });
   }, [timeStep]);
@@ -1615,7 +1698,7 @@ function SimulationPage({ config }) {
     setErrorMsg(null);
 
     streamSimulation(
-      { disease, temp, rh, density, detections, maskGrid, imgWidth, imgHeight, imageData },
+      { disease, temp, rh, density, months, detections, maskGrid, imgWidth, imgHeight, imageData },
       (frame) => {
         if (cancelledRef.current) return;
         framesRef.current = [...framesRef.current, frame];
@@ -1725,7 +1808,7 @@ function SimulationPage({ config }) {
               {simState === "loading" && (
                 <span className="tag" style={{ background: COLORS.teal50, color: COLORS.teal600, display: "flex", alignItems: "center", gap: 4 }}>
                   <Loader size={10} style={{ animation: "spin 1s linear infinite" }} />
-                  Loading {frames.length}/31
+                  Loading {frames.length}/{expectedFrames}
                 </span>
               )}
               {simState === "complete" && (
@@ -1807,16 +1890,17 @@ function SimulationPage({ config }) {
                         background: "rgba(0,0,0,0.55)", color: "#acd", borderRadius: 4,
                         padding: "2px 8px", backdropFilter: "blur(4px)",
                       }}>
-                        Computing… {frames.length}/31
+                        Computing… {frames.length}/{expectedFrames}
                       </div>
                     )}
                   </>
                 ) : (
                   <FieldView
                     disease={disease}
-                    timeStep={timeStep}
+                    timeStep={month}
                     envFactor={E_ENV > 0 ? Math.min(1.5, E_ENV * 1.3) : (rh >= 80 && temp >= 25 ? 1.4 : 0.8)}
                     temp={temp}
+                    months={months}
                     onStatsUpdate={setFieldStats}
                     playing={playing}
                     onPlayPause={handlePlayPause}
@@ -1831,14 +1915,14 @@ function SimulationPage({ config }) {
                   <div className="progress-bar-bg">
                     <motion.div
                       className="progress-bar-fill"
-                      animate={{ width: `${(frames.length / 31) * 100}%` }}
+                      animate={{ width: `${(frames.length / expectedFrames) * 100}%` }}
                       transition={{ duration: 0.4 }}
                       style={{ background: COLORS.teal400 }}
                     />
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--text-muted)", marginTop: 3 }}>
                     <span>SCA + PyVista rendering</span>
-                    <span>{frames.length} / 31 months</span>
+                    <span>{frames.length} / {expectedFrames} frames</span>
                   </div>
                 </div>
               )}
@@ -1848,7 +1932,7 @@ function SimulationPage({ config }) {
                 <div className="time-slider-label">
                   <span>Month 0</span>
                   <strong>Month {month}</strong>
-                  <span>Month 30</span>
+                  <span>Month {months}</span>
                 </div>
                 <input
                   type="range" className="time-slider"
@@ -1863,7 +1947,7 @@ function SimulationPage({ config }) {
               <div className="sim-toolbar">
                 <div className="sim-toolbar-left">
                   <span className="time-label">Month</span>
-                  <span className="time-value">{month} / 30</span>
+                  <span className="time-value">{month} / {months}</span>
                   <span className="time-label" style={{ marginLeft: 8, color: COLORS.teal400, fontSize: 11 }}>
                     {simState === "loading" ? "streaming…" : "PyVista 3D"}
                   </span>
@@ -1883,7 +1967,7 @@ function SimulationPage({ config }) {
               <div className="metrics-card-title">Disease spread over time</div>
               {activeTab === "field" && fieldStats ? (
                 <>
-                  <FieldSparkline data={fieldStats} timeStep={timeStep} />
+                  <FieldSparkline data={fieldStats} timeStep={month} months={months} />
                   <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 14px", marginTop: 8 }}>
                     {[
                       { color: "#4a9020", label: "Healthy" },
@@ -1900,11 +1984,14 @@ function SimulationPage({ config }) {
                 </>
               ) : (
                 <>
-                  <Sparkline data={infHistory} color={isFW ? "#BA7517" : "#639922"} />
-                  <div style={{ marginTop: 8 }}>
-                    <Sparkline data={necHistory} color="#5F5E5A" />
-                  </div>
-                  <div style={{ display: "flex", gap: 16, marginTop: 10 }}>
+                  <SimSparkline
+                    infData={infHistory}
+                    necData={necHistory}
+                    timeStep={timeStep}
+                    months={months}
+                    infColor={isFW ? "#BA7517" : "#639922"}
+                  />
+                  <div style={{ display: "flex", gap: 16, marginTop: 8 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-muted)" }}>
                       <div style={{ width: 12, height: 3, borderRadius: 2, background: isFW ? "#BA7517" : "#639922" }} />
                       Infected %
@@ -1924,7 +2011,7 @@ function SimulationPage({ config }) {
             {/* Leaf health metrics / Field health breakdown */}
             <div className="metrics-card">
               {activeTab === "field" && fieldStats ? (() => {
-                const s = fieldStats[Math.min(timeStep, fieldStats.length - 1)];
+                const s = fieldStats[Math.min(month, fieldStats.length - 1)];
                 return (
                   <>
                     <div className="metrics-card-title">Field health — Month {month}</div>
@@ -2017,12 +2104,12 @@ function SimulationPage({ config }) {
               </AnimatePresence>
               <div className="stage-track">
                 <motion.div className="stage-fill" initial={false}
-                  animate={{ width: `${Math.max(2, (month / 30) * 100)}%` }}
+                  animate={{ width: `${Math.max(2, (month / months) * 100)}%` }}
                   transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
                   style={{ background: stageColor }} />
               </div>
               <div className="stage-track-labels">
-                <span>Month 0</span><span>Month {month}</span><span>Month 30</span>
+                <span>Month 0</span><span>Month {month}</span><span>Month {months}</span>
               </div>
             </div>}
 

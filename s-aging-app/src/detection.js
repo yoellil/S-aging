@@ -285,22 +285,47 @@ function decodeMaskGrid(detections, protoOutput, imgEl, scale, padX, padY, srcW,
   const protoContentW = Math.max(1, Math.round(srcW * scale * protoScale));
   const protoContentH = Math.max(1, Math.round(srcH * scale * protoScale));
 
-  // Draw original image at SCA resolution for colour classification
+  // Portrait photos (srcH > srcW) have the leaf's long axis running vertically.
+  // The SCA grid is landscape (COLS=160 = leaf length, ROWS=100 = leaf width).
+  // We rotate the coordinate sampling 90° for portrait so the leaf length direction
+  // in the photo (vertical) maps to SCA columns and width (horizontal) maps to rows.
+  const isPortrait = srcH > srcW;
+
+  // Draw original image at SCA resolution for colour classification.
+  // For portrait photos, rotate 90° CW so the long axis fills the 160-wide canvas.
   const colorCanvas = document.createElement('canvas');
   colorCanvas.width  = SCA_COLS;
   colorCanvas.height = SCA_ROWS;
   const colorCtx = colorCanvas.getContext('2d');
-  colorCtx.drawImage(imgEl, 0, 0, SCA_COLS, SCA_ROWS);
+  if (isPortrait) {
+    colorCtx.save();
+    colorCtx.translate(SCA_COLS, 0);
+    colorCtx.rotate(Math.PI / 2);
+    colorCtx.drawImage(imgEl, 0, 0, SCA_ROWS, SCA_COLS);
+    colorCtx.restore();
+  } else {
+    colorCtx.drawImage(imgEl, 0, 0, SCA_COLS, SCA_ROWS);
+  }
   const colorData = colorCtx.getImageData(0, 0, SCA_COLS, SCA_ROWS).data;
 
-  // Resample combined proto mask → SCA grid, classify by brightness
+  // Resample combined proto mask → SCA grid, classify by brightness.
+  // Portrait: c (leaf length) ← photo y; r (leaf width) ← photo x (rotated 90° CW).
   const maskGrid = new Array(SCA_ROWS * SCA_COLS).fill(0);
   let infCount = 0, necCount = 0;
 
   for (let r = 0; r < SCA_ROWS; r++) {
     for (let c = 0; c < SCA_COLS; c++) {
-      const px = Math.round(protoPadX + (c / SCA_COLS) * protoContentW);
-      const py = Math.round(protoPadY + (r / SCA_ROWS) * protoContentH);
+      let px, py;
+      if (isPortrait) {
+        // 90° CW rotation: leaf tip at portrait-top maps to SCA col 159 (leaf tip).
+        // r (leaf width) ← photo-x: px = r/SCA_ROWS * contentW
+        // c (leaf length) ← photo-y inverted: py = (1 - c/SCA_COLS) * contentH
+        px = Math.round(protoPadX + (r / SCA_ROWS) * protoContentW);
+        py = Math.round(protoPadY + (1 - c / SCA_COLS) * protoContentH);
+      } else {
+        px = Math.round(protoPadX + (c / SCA_COLS) * protoContentW);
+        py = Math.round(protoPadY + (r / SCA_ROWS) * protoContentH);
+      }
 
       if (px >= 0 && px < pW && py >= 0 && py < pH && combinedMask[py * pW + px] > 0) {
         const pixIdx = (r * SCA_COLS + c) * 4;

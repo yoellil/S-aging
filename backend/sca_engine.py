@@ -25,7 +25,7 @@ except ImportError:
 class SCAEngine:
     COLS: int = 160
     ROWS: int = 100
-    TOTAL_STEPS: int = 55   # iterations spanning 30 simulated months
+    STEPS_PER_MONTH: float = 55 / 30  # ≈1.833 SCA iterations per simulated month
     TOTAL_MONTHS: int = 30
 
     # Phase 3 spatial weight constants
@@ -119,7 +119,7 @@ class SCAEngine:
         # P_BASE calibrated to disease epidemiology:
         # FW: soil-borne vascular, 2–6 month incubation → slow per-step base rate
         # BS: aerially transmitted ascospores/conidia, 10–30 dpi lesion onset → faster
-        P_BASE = 0.010 if is_fw else 0.017
+        P_BASE = 0.018 if is_fw else 0.028
         p_base = P_BASE * E_ENV * density_factor
 
         return {
@@ -160,7 +160,7 @@ class SCAEngine:
             if mask_grid is not None and len(mask_grid) == self.ROWS * self.COLS:
                 mask_arr = np.array(mask_grid, dtype=np.uint8).reshape(self.ROWS, self.COLS)
                 mask_arr[~self.leaf_mask] = 0
-                margin_zone = self.margin_dist <= 20.0
+                margin_zone = self.margin_dist <= 30.0
                 mask_arr[~margin_zone] = 0
                 infected = mask_arr == 1
                 necrotic = mask_arr == 2
@@ -169,17 +169,17 @@ class SCAEngine:
                     if n_inf > 0:
                         grid[infected] = 1
                         intensity[infected] = (
-                            0.3 + np.random.random(n_inf).astype(np.float32) * 0.4
+                            0.08 + np.random.random(n_inf).astype(np.float32) * 0.22
                         )
                     if necrotic.any():
                         grid[necrotic] = 2
-                        intensity[necrotic] = 1.0
+                        intensity[necrotic] = 0.0   # ramps yellow→brown over sim
                     return
 
             # Fallback – seed the full computed leaf margin
             ys, xs = np.where(self.margin_mask)
             rng = np.random.default_rng()
-            base_int = (rng.random(len(ys)) * 0.35 + 0.15).astype(np.float32)
+            base_int = (rng.random(len(ys)) * 0.22 + 0.05).astype(np.float32)
             for i, (y, x) in enumerate(zip(ys, xs)):
                 grid[y, x] = 1
                 intensity[y, x] = float(base_int[i])
@@ -198,14 +198,18 @@ class SCAEngine:
             if n_inf + n_nec > 0:
                 grid[infected] = 1
                 if n_inf > 0:
-                    intensity[infected] = 0.5 + np.random.random(n_inf).astype(np.float32) * 0.5
+                    intensity[infected] = 0.10 + np.random.random(n_inf).astype(np.float32) * 0.25
                 grid[necrotic] = 2
-                intensity[necrotic] = 1.0
+                intensity[necrotic] = 0.0   # BS necrotic ramps near-black → grey
                 return
 
         # Phase 1B: YOLO detection bboxes
+        # Portrait photos (img_h > img_w) have the leaf's long axis vertical.
+        # Apply the same 90° CW rotation as decodeMaskGrid: photo-y → SCA col (leaf length),
+        # photo-x → SCA row (leaf width), with the vertical axis inverted.
         seeds = None
         if detections and img_w and img_h:
+            is_portrait = img_h > img_w
             matching = [
                 d for d in detections
                 if d.get("diseaseKey") == disease and d.get("diseaseKey") != "healthy"
@@ -216,10 +220,17 @@ class SCAEngine:
                 matching.sort(key=lambda d: d.get("score", 0), reverse=True)
                 seeds = []
                 for det in matching[:3]:
-                    gx1 = max(1, round(det["x1"] / img_w * self.COLS))
-                    gy1 = max(1, round(det["y1"] / img_h * self.ROWS))
-                    gx2 = min(self.COLS - 2, round(det["x2"] / img_w * self.COLS))
-                    gy2 = min(self.ROWS - 2, round(det["y2"] / img_h * self.ROWS))
+                    if is_portrait:
+                        # photo-x → SCA row (leaf width); photo-y inverted → SCA col (leaf length)
+                        gy1 = max(1, round(det["x1"] / img_w * self.ROWS))
+                        gy2 = min(self.ROWS - 2, round(det["x2"] / img_w * self.ROWS))
+                        gx1 = max(1, round((1 - det["y2"] / img_h) * self.COLS))
+                        gx2 = min(self.COLS - 2, round((1 - det["y1"] / img_h) * self.COLS))
+                    else:
+                        gx1 = max(1, round(det["x1"] / img_w * self.COLS))
+                        gy1 = max(1, round(det["y1"] / img_h * self.ROWS))
+                        gx2 = min(self.COLS - 2, round(det["x2"] / img_w * self.COLS))
+                        gy2 = min(self.ROWS - 2, round(det["y2"] / img_h * self.ROWS))
                     count = max(4, round(det.get("score", 0.5) * 12))
                     rng = np.random.default_rng()
                     for _ in range(count):
@@ -243,7 +254,7 @@ class SCAEngine:
                     sx, sy = cx + dx, cy + dy
                     if 0 <= sx < self.COLS and 0 <= sy < self.ROWS:
                         grid[sy, sx] = 1
-                        intensity[sy, sx] = float(0.5 + np.random.random() * 0.5)
+                        intensity[sy, sx] = float(0.05 + np.random.random() * 0.20)
 
     # ── Phase 2 + 3: Moore neighbourhood + spatial weighting ─────────────────
 
@@ -301,22 +312,50 @@ class SCAEngine:
         is_fw: bool,
         p_base: float,
         step_idx: int,
+        total_steps: int,
+        e_env: float = 1.0,
     ):
         """One SCA iteration. Necrotisation and new infections are resolved
-        simultaneously from the state at the *start* of the step."""
+        simultaneously from the state at the *start* of the step.
+        e_env scales colour progression and necrotisation so that optimal
+        conditions produce faster and darker lesions than unfavourable ones."""
         new_grid = grid.copy()
         new_intensity = intensity.copy()
 
-        # Necrotic transition — rate increases as disease matures
+        # Clamp e_env to [0.1, 1.4] so the multiplier is always meaningful
+        env_scale = float(np.clip(e_env, 0.10, 1.40))
+
+        # Ramp intensity for already-infected cells — faster under good conditions.
+        # Calibrated so cells progress from yellow to dark brown over ~30-40 steps
+        # at optimal conditions (matching BS 30-60 day lesion maturation).
         was_infected = (grid == 1) & self.leaf_mask
-        nec_rate = (
-            0.004 + (step_idx / self.TOTAL_STEPS) * 0.012
-            if is_fw
-            else 0.002 + (step_idx / self.TOTAL_STEPS) * 0.005
+        ramp_inc = (0.018 if is_fw else 0.014) * env_scale
+        new_intensity[was_infected] = np.minimum(
+            new_intensity[was_infected] + ramp_inc, 1.0
         )
+
+        # Necrotic transition — calibrated to BS 20-80 day spore-to-necrosis window.
+        # 55 steps span the chosen month range; at optimal a cell has ~15% chance/step
+        # of transitioning, giving 50% necrosis probability within ~4 steps (~month 0.4
+        # of a 3-month run), matching the 20-day low end of the infection cycle.
+        base_nec = (
+            0.020 + (step_idx / total_steps) * 0.040
+            if is_fw
+            else 0.015 + (step_idx / total_steps) * 0.025
+        )
+        nec_rate = base_nec * env_scale
         to_necrotize = was_infected & (np.random.random((self.ROWS, self.COLS)) < nec_rate)
         new_grid[to_necrotize] = 2
-        new_intensity[to_necrotize] = 1.0
+        # FW: necrotic jumps to full brown immediately.
+        # BS: starts near-black (0.0) and ramps toward grey (desiccated tissue).
+        new_intensity[to_necrotize] = 1.0 if is_fw else 0.0
+
+        # BS: ramp already-necrotic cells toward grey (desiccated ash) — env-scaled
+        if not is_fw:
+            was_necrotic = (grid == 2) & self.leaf_mask
+            new_intensity[was_necrotic] = np.minimum(
+                new_intensity[was_necrotic] + 0.022 * env_scale, 1.0
+            )
 
         # New infections via Phase 2 formula: P_trans = [1-(1-pBase)^N_inf] × w
         n_inf, w_sum = self._compute_neighbors(grid, is_fw)
@@ -337,7 +376,9 @@ class SCAEngine:
         new_grid[to_infect] = 1
         n_new = int(np.sum(to_infect))
         if n_new > 0:
-            new_intensity[to_infect] = 0.4 + np.random.random(n_new) * 0.6
+            # Start yellow (low intensity) so colour ramps naturally from
+            # olive-yellow → dark brown over subsequent steps.
+            new_intensity[to_infect] = 0.05 + np.random.random(n_new) * 0.20
 
         return new_grid, new_intensity
 
@@ -349,48 +390,51 @@ class SCAEngine:
         temp: float,
         rh: float,
         density: str,
+        months: int = 30,
         detections: Optional[List[Dict]] = None,
         img_w: Optional[int] = None,
         img_h: Optional[int] = None,
         mask_grid: Optional[List[int]] = None,
     ) -> Generator[Dict, None, None]:
         """
-        Run the full 30-month SCA simulation and yield one frame dict per month.
+        Run the SCA simulation for `months` months and yield one frame per SCA step.
+        The number of SCA iterations scales with `months` so that disease dynamics
+        progress at a realistic pace (≈1.83 steps/month, matching the original
+        55 steps / 30 months calibration).
         Each frame: { step, month, grid, intensity, stats, env }
         """
         env = self.compute_env(disease, temp, rh, density)
-        is_fw = env["is_fw"]
+        is_fw  = env["is_fw"]
         p_base = env["p_base"]
+        e_env  = float(env["E_ENV"])
 
         grid = np.zeros((self.ROWS, self.COLS), dtype=np.uint8)
         intensity = np.zeros((self.ROWS, self.COLS), dtype=np.float32)
         self.seed_grid(grid, intensity, disease, is_fw, detections, img_w, img_h, mask_grid)
 
         leaf_count = int(np.sum(self.leaf_mask))
-        last_month = -1
+        total_steps = max(10, round(months * self.STEPS_PER_MONTH))
 
-        for step_idx in range(self.TOTAL_STEPS + 1):
-            month = round(step_idx / self.TOTAL_STEPS * self.TOTAL_MONTHS)
+        for step_idx in range(total_steps + 1):
+            month = round(step_idx / total_steps * months)
 
-            if month != last_month:
-                last_month = month
-                inf_count = int(np.sum((grid == 1) & self.leaf_mask))
-                nec_count = int(np.sum((grid == 2) & self.leaf_mask))
-                inf_pct = inf_count / max(leaf_count, 1) * 100.0
-                nec_pct = nec_count / max(leaf_count, 1) * 100.0
+            inf_count = int(np.sum((grid == 1) & self.leaf_mask))
+            nec_count = int(np.sum((grid == 2) & self.leaf_mask))
+            inf_pct = inf_count / max(leaf_count, 1) * 100.0
+            nec_pct = nec_count / max(leaf_count, 1) * 100.0
 
-                yield {
-                    "step":  step_idx,
-                    "month": month,
-                    "grid":  grid.copy(),
-                    "intensity": intensity.copy(),
-                    "stats": {
-                        "infected_pct":  inf_pct,
-                        "necrotic_pct":  nec_pct,
-                        "healthy_pct":   max(0.0, 100.0 - inf_pct - nec_pct),
+            yield {
+                "step":  step_idx,
+                "month": month,
+                "grid":  grid.copy(),
+                "intensity": intensity.copy(),
+                "stats": {
+                    "infected_pct":  inf_pct,
+                    "necrotic_pct":  nec_pct,
+                    "healthy_pct":   max(0.0, 100.0 - inf_pct - nec_pct),
                     },
                     "env": {k: v for k, v in env.items() if isinstance(v, (int, float, bool))},
                 }
 
-            if step_idx < self.TOTAL_STEPS:
-                grid, intensity = self._step(grid, intensity, is_fw, p_base, step_idx)
+            if step_idx < total_steps:
+                grid, intensity = self._step(grid, intensity, is_fw, p_base, step_idx, total_steps, e_env)

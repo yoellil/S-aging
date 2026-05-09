@@ -60,6 +60,7 @@ class SimRequest(BaseModel):
     temp: float = 26.0
     rh: float = 85.0
     density: str = "medium"
+    months: int = 30
     detections: Optional[List[DetectionItem]] = None
     imgWidth: Optional[int] = None
     imgHeight: Optional[int] = None
@@ -97,6 +98,7 @@ async def simulate(req: SimRequest):
             temp=req.temp,
             rh=req.rh,
             density=req.density,
+            months=req.months,
             detections=dets,
             img_w=req.imgWidth,
             img_h=req.imgHeight,
