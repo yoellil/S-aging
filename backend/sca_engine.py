@@ -14,6 +14,7 @@ Phase 4 – environmental factors CT (temperature) and CRH (humidity)
 
 import numpy as np
 from typing import Optional, List, Dict, Generator
+from simulation.mesh import leaf_mask_for_grid
 
 try:
     from scipy.ndimage import binary_erosion, distance_transform_edt
@@ -31,18 +32,13 @@ class SCAEngine:
     # Phase 3 spatial weight constants
     SIGMA_BS: float = 1.65   # BS longitudinal weight (along horizontal leaf veins)
     BETA_BS:  float = 0.52   # BS transverse weight (perpendicular to veins)
-    FW_ANISO: float = 1.80   # FW anisotropy strength toward midrib
+    FW_ANISO: float = 0.55   # FW anisotropy strength toward midrib
 
     def __init__(self):
         self.mid_y = self.ROWS / 2.0
 
-        # Precompute leaf boundary mask (superellipse — narrower at tip, wider at base)
-        u = np.linspace(-1, 1, self.COLS)
-        v = np.linspace(-1, 1, self.ROWS)
-        U, V = np.meshgrid(u, v)
-        self.leaf_mask: np.ndarray = (
-            np.abs(U) ** 1.7 / 0.92 ** 1.7 + V ** 2 / 0.87 ** 2
-        ) <= 1.0
+        # Leaf boundary mask — shared with the 3-D mesh so SCA cells align with visible geometry
+        self.leaf_mask: np.ndarray = leaf_mask_for_grid((self.ROWS, self.COLS))
 
         # y-coordinate grid for FW midrib-directed weight (broadcast-ready)
         self.y_grid: np.ndarray = (
@@ -156,33 +152,36 @@ class SCAEngine:
         #      the characteristic yellow-green band at both leaf edges.
         # Ref: MDPI Agronomy 2021 (Venezuelan FW); frontiersin.org/fpls/2019/1395
         if is_fw:
-            # Phase 1A – use YOLO mask restricted to the margin zone
+            # Phase 1A – seed the full detected mask at very low intensity so
+            # the photo's disease regions appear on the 3D leaf and fade in
+            # gradually (alpha = 0.18 + iv*0.72 keeps them faint at start).
             if mask_grid is not None and len(mask_grid) == self.ROWS * self.COLS:
                 mask_arr = np.array(mask_grid, dtype=np.uint8).reshape(self.ROWS, self.COLS)
                 mask_arr[~self.leaf_mask] = 0
-                margin_zone = self.margin_dist <= 30.0
-                mask_arr[~margin_zone] = 0
-                infected = mask_arr == 1
-                necrotic = mask_arr == 2
-                if infected.any() or necrotic.any():
-                    n_inf = int(np.sum(infected))
-                    if n_inf > 0:
-                        grid[infected] = 1
-                        intensity[infected] = (
-                            0.08 + np.random.random(n_inf).astype(np.float32) * 0.22
-                        )
-                    if necrotic.any():
-                        grid[necrotic] = 2
-                        intensity[necrotic] = 0.0   # ramps yellow→brown over sim
+                infected = mask_arr >= 1
+                n_inf = int(np.sum(infected))
+                if n_inf > 0:
+                    grid[infected] = 1
+                    intensity[infected] = (
+                        np.random.random(n_inf).astype(np.float32) * 0.04 + 0.01
+                    )
                     return
 
-            # Fallback – seed the full computed leaf margin
+            # Fallback – seed a single small cluster at one random point on
+            # the margin so FW grows from one focal entry site, not a ring.
             ys, xs = np.where(self.margin_mask)
             rng = np.random.default_rng()
-            base_int = (rng.random(len(ys)) * 0.22 + 0.05).astype(np.float32)
-            for i, (y, x) in enumerate(zip(ys, xs)):
-                grid[y, x] = 1
-                intensity[y, x] = float(base_int[i])
+            anchor = int(rng.choice(len(ys)))
+            ay, ax = int(ys[anchor]), int(xs[anchor])
+            patch_r = 5
+            seeded = [
+                i for i in range(len(ys))
+                if (int(ys[i]) - ay) ** 2 + (int(xs[i]) - ax) ** 2 <= patch_r ** 2
+            ]
+            base_int = (rng.random(len(seeded)) * 0.18 + 0.04).astype(np.float32)
+            for k, idx in enumerate(seeded):
+                grid[ys[idx], xs[idx]] = 1
+                intensity[ys[idx], xs[idx]] = float(base_int[k])
             return
 
         # ── Black Sigatoka: use YOLO mask → bbox → anatomical defaults ────────
@@ -344,7 +343,17 @@ class SCAEngine:
             else 0.015 + (step_idx / total_steps) * 0.025
         )
         nec_rate = base_nec * env_scale
-        to_necrotize = was_infected & (np.random.random((self.ROWS, self.COLS)) < nec_rate)
+        if is_fw:
+            # Necrosis is margin-first and age-gated: only mature infected cells
+            # (intensity ≥ 0.40) at the outer margin necrotize quickly, preserving
+            # the chlorotic halo on newly-infected inner cells.
+            margin_nec = np.exp(-self.margin_dist / 8.0)
+            nec_rate_map = nec_rate * (0.05 + 0.95 * margin_nec)
+            to_necrotize = was_infected & (intensity >= 0.40) & (
+                np.random.random((self.ROWS, self.COLS)) < nec_rate_map
+            )
+        else:
+            to_necrotize = was_infected & (np.random.random((self.ROWS, self.COLS)) < nec_rate)
         new_grid[to_necrotize] = 2
         # FW: necrotic jumps to full brown immediately.
         # BS: starts near-black (0.0) and ramps toward grey (desiccated tissue).
@@ -365,12 +374,10 @@ class SCAEngine:
         p_trans = (1.0 - np.power(np.maximum(0.0, 1.0 - p_base), n_inf)) * w_avg
 
         if is_fw:
-            # FW spreads fastest at the leaf margin (margin_dist ≈ 0) and
-            # much slower toward the midrib (margin_dist ≈ 40).
-            # Factor: 1.0 at edge → ~0.18 at midrib, creating the characteristic
-            # band of chlorosis that widens slowly inward over months.
-            margin_factor = np.exp(-self.margin_dist / 10.0)
-            p_trans = p_trans * (0.15 + 0.85 * margin_factor)
+            # Gentle margin brake: slows inward creep without creating a donut
+            # (seeding is now a single focal cluster, not the full ring).
+            margin_factor = np.exp(-self.margin_dist / 22.0)
+            p_trans = p_trans * (0.12 + 0.88 * margin_factor)
 
         to_infect = was_healthy & (np.random.random((self.ROWS, self.COLS)) < p_trans)
         new_grid[to_infect] = 1
@@ -410,7 +417,10 @@ class SCAEngine:
 
         grid = np.zeros((self.ROWS, self.COLS), dtype=np.uint8)
         intensity = np.zeros((self.ROWS, self.COLS), dtype=np.float32)
-        self.seed_grid(grid, intensity, disease, is_fw, detections, img_w, img_h, mask_grid)
+        # FW: seed AFTER frame 0 so the leaf starts healthy and the thin
+        # chlorotic halo grows in from step 1 rather than being pre-seeded.
+        if not is_fw:
+            self.seed_grid(grid, intensity, disease, is_fw, detections, img_w, img_h, mask_grid)
 
         leaf_count = int(np.sum(self.leaf_mask))
         total_steps = max(10, round(months * self.STEPS_PER_MONTH))
@@ -435,6 +445,9 @@ class SCAEngine:
                     },
                     "env": {k: v for k, v in env.items() if isinstance(v, (int, float, bool))},
                 }
+
+            if step_idx == 0 and is_fw:
+                self.seed_grid(grid, intensity, disease, is_fw, detections, img_w, img_h, mask_grid)
 
             if step_idx < total_steps:
                 grid, intensity = self._step(grid, intensity, is_fw, p_base, step_idx, total_steps, e_env)

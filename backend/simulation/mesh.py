@@ -35,11 +35,7 @@ def _leaf_boundary(u: np.ndarray, v: np.ndarray) -> np.ndarray:
     (U, V) ∈ [-1, 1]².  U is along the leaf length (tip = +1, base = -1).
     """
     U, V = np.meshgrid(u, v)
-    half_width = np.clip(1.0 - (np.abs(U) ** 1.6) / (0.96 ** 1.6), 0.0, 1.0)
-    # Slight asymmetry: pointier tip, rounder base.
-    tip_taper = np.where(U > 0, 1.0 - 0.22 * U, 1.0 + 0.08 * U)
-    half_width = np.clip(half_width * tip_taper, 0.0, 1.0)
-    return np.abs(V) <= half_width
+    return U ** 2 + V ** 2 <= 1.0
 
 
 def build_leaf_mesh(

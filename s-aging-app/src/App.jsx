@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import Antigravity from "./Antigravity";
 import CurvedLoop from "./CurvedLoop";
-import { detectDisease, warmupSession } from "./detection";
+import { detectDisease, colorSegMask, warmupSession } from "./detection";
 import { streamSimulation } from "./api";
 import { saveSimulationLog } from "./profileApi";
 import { supabase } from "./utils/supabase";
@@ -1152,6 +1152,7 @@ function UploadPage({ onNavigate, setSimConfig }) {
   const [detections, setDetections] = useState(null);   // array from detectDisease()
   const [maskGrid, setMaskGrid] = useState(null);       // 160×100 flat array from YOLO seg masks
   const [detectionError, setDetectionError] = useState(null);
+  const [useColorSeg, setUseColorSeg] = useState(false);
   const fileInputRef = useRef(null);
   const imgRef = useRef(null);
 
@@ -1171,7 +1172,7 @@ function UploadPage({ onNavigate, setSimConfig }) {
 
   const eff = envEffect();
 
-  // Run ONNX detection whenever a real image is uploaded
+  // Run detection whenever a real image is uploaded or the mode changes
   useEffect(() => {
     if (!uploadedImage) { setDetections(null); setMaskGrid(null); setDetectionError(null); return; }
     let cancelled = false;
@@ -1179,18 +1180,18 @@ function UploadPage({ onNavigate, setSimConfig }) {
     setDetections(null);
     setDetectionError(null);
 
-    // Wait for the <img> to fully load then run inference
     const run = async (imgEl) => {
       try {
+        // Always run YOLO for disease verdict + auto-select
         const result = await detectDisease(imgEl);
         if (cancelled) return;
         setDetections(result.detections);
-        setMaskGrid(result.maskGrid);
-        // Auto-select the disease with the highest confidence
         const top = result.detections
           .filter(d => d.diseaseKey !== "unknown" && d.diseaseKey !== "healthy")
           .sort((a, b) => b.score - a.score)[0];
         if (top) setSelected(top.diseaseKey);
+        // Use color seg mask or YOLO mask depending on mode
+        setMaskGrid(useColorSeg ? colorSegMask(imgEl) : result.maskGrid);
       } catch (err) {
         if (!cancelled) setDetectionError("Detection failed: " + err.message);
       } finally {
@@ -1207,7 +1208,7 @@ function UploadPage({ onNavigate, setSimConfig }) {
     };
     tryRun();
     return () => { cancelled = true; };
-  }, [uploadedImage]);
+  }, [uploadedImage, useColorSeg]);
 
   const handleFileSelect = useCallback((file) => {
     if (!file) return;
@@ -1329,7 +1330,22 @@ function UploadPage({ onNavigate, setSimConfig }) {
         {/* ── YOLOv11 Detection result panel ── */}
         {uploadedImage && (
           <div className="detection-card" style={{ marginTop: 16 }}>
-            <div className="detection-title">YOLOv11 detection</div>
+            <div className="detection-title" style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span>{useColorSeg ? "Color segmentation" : "YOLOv11 detection"}</span>
+              <button
+                onClick={() => setUseColorSeg(v => !v)}
+                style={{
+                  fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 20,
+                  border: "1px solid var(--border)", cursor: "pointer",
+                  background: useColorSeg ? "var(--green-100, #C0DD97)" : "var(--bg2)",
+                  color: useColorSeg ? "#3B6D11" : "var(--text-muted)",
+                  transition: "all 0.15s",
+                }}
+              >
+                {useColorSeg ? "Color seg" : "YOLO model"}
+              </button>
+            </div>
+
             {detecting && (
               <div style={{ fontSize: 13, color: "var(--text-muted)", padding: "8px 0" }}>
                 Running inference…
@@ -1502,19 +1518,6 @@ function LeafViewer3D({ frame, disease, devMode }) {
     const cellW = UV_X_RANGE * _TEX / _LEAF_COLS;
     const cellH = UV_Y_RANGE * _TEX / _LEAF_ROWS;
 
-    // Dev mode: draw all leaf boundary cells in blue before disease states
-    if (devModeRef.current) {
-      ctx.fillStyle = "rgba(40, 120, 255, 0.22)";
-      for (let r = 0; r < _LEAF_ROWS; r++) {
-        for (let c = 0; c < _LEAF_COLS; c++) {
-          if (!_LEAF_MASK[r * _LEAF_COLS + c]) continue;
-          const px = (UV_X_MIN + (c / _LEAF_COLS) * UV_X_RANGE) * _TEX;
-          const py = (UV_Y_MIN + (r / _LEAF_ROWS) * UV_Y_RANGE) * _TEX;
-          ctx.fillRect(px, py, cellW + 0.5, cellH + 0.5);
-        }
-      }
-    }
-
     for (let r = 0; r < _LEAF_ROWS; r++) {
       for (let c = 0; c < _LEAF_COLS; c++) {
         const idx = r * _LEAF_COLS + c;
@@ -1529,16 +1532,30 @@ function LeafViewer3D({ frame, disease, devMode }) {
         if (state === 1) {
           if (diseaseType === "fusarium_wilt") {
             ri = 225 + iv * (185 - 225); gi = 220 + iv * (120 - 220); bi = 70 + iv * (25 - 70);
+            alpha = 0.18 + iv * 0.72;
           } else {
             ri = 160 + iv * (80 - 160); gi = 140 + iv * (40 - 140); bi = 45 + iv * (10 - 45);
+            alpha = 0.50 + 0.45 * iv;
           }
-          alpha = 0.50 + 0.45 * iv;
         } else {
           ri = 95 + iv * (25 - 95); gi = 55 + iv * (12 - 55); bi = 18 + iv * (4 - 18);
           alpha = 0.78 + 0.18 * iv;
         }
         ctx.fillStyle = `rgba(${Math.round(ri)},${Math.round(gi)},${Math.round(bi)},${alpha.toFixed(3)})`;
         ctx.fillRect(px, py, cellW + 0.5, cellH + 0.5);
+      }
+    }
+
+    // Dev mode: draw elliptical mask overlay on top so it's always visible
+    if (devModeRef.current) {
+      ctx.fillStyle = "rgba(40, 120, 255, 0.28)";
+      for (let r = 0; r < _LEAF_ROWS; r++) {
+        for (let c = 0; c < _LEAF_COLS; c++) {
+          if (!_LEAF_MASK[r * _LEAF_COLS + c]) continue;
+          const px = (UV_X_MIN + (c / _LEAF_COLS) * UV_X_RANGE) * _TEX;
+          const py = (UV_Y_MIN + (r / _LEAF_ROWS) * UV_Y_RANGE) * _TEX;
+          ctx.fillRect(px, py, cellW + 0.5, cellH + 0.5);
+        }
       }
     }
     texture.needsUpdate = true;
@@ -2427,7 +2444,7 @@ export default function SAgingApp() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [theme, setTheme] = useState(() => localStorage.getItem("saging-theme") || "light");
   const [reduceMotion, setReduceMotion] = useState(() => localStorage.getItem("saging-reduce-motion") === "true");
-  const [devMode, setDevMode] = useState(() => localStorage.getItem("saging-dev-mode") === "true");
+  const [devMode, setDevMode] = useState(false);
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
@@ -2437,10 +2454,6 @@ export default function SAgingApp() {
   useEffect(() => {
     localStorage.setItem("saging-reduce-motion", reduceMotion);
   }, [reduceMotion]);
-
-  useEffect(() => {
-    localStorage.setItem("saging-dev-mode", devMode);
-  }, [devMode]);
 
   // ── Auth state ─────────────────────────────────────────────────────────
   // Single credential: Supabase JWT (session.access_token). Auth-service validates it on each request.

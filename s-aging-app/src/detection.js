@@ -425,6 +425,71 @@ export async function detectDisease(imgEl) {
 }
 
 /**
+ * Color-segmentation mask — no model required.
+ *
+ * Samples the uploaded image at each 160×100 SCA cell and classifies pixels
+ * by hue/saturation to find disease regions:
+ *   2 = necrotic  (dark brown / very dark)
+ *   1 = infected  (yellow / yellowish, typical early-stage lesion)
+ *   0 = healthy / background (green or unclassified)
+ *
+ * Returns the same flat 160×100 array format as detectDisease().maskGrid.
+ */
+export function colorSegMask(imgEl) {
+  const SCA_ROWS = 100, SCA_COLS = 160;
+  const W = imgEl.naturalWidth, H = imgEl.naturalHeight;
+  const canvas = document.createElement("canvas");
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(imgEl, 0, 0);
+  const { data } = ctx.getImageData(0, 0, W, H);
+
+  const cellW = W / SCA_COLS, cellH = H / SCA_ROWS;
+  const mask = new Array(SCA_ROWS * SCA_COLS).fill(0);
+
+  for (let r = 0; r < SCA_ROWS; r++) {
+    for (let c = 0; c < SCA_COLS; c++) {
+      // 2×2 sub-sample per cell for robustness
+      let sumR = 0, sumG = 0, sumB = 0;
+      for (let dy = 0.25; dy < 1; dy += 0.5) {
+        for (let dx = 0.25; dx < 1; dx += 0.5) {
+          const px = Math.min(W - 1, Math.round((c + dx) * cellW));
+          const py = Math.min(H - 1, Math.round((r + dy) * cellH));
+          const i = (py * W + px) * 4;
+          sumR += data[i]; sumG += data[i + 1]; sumB += data[i + 2];
+        }
+      }
+      const R = sumR / 4, G = sumG / 4, B = sumB / 4;
+      const brightness = (R + G + B) / 3;
+      if (brightness < 25 || brightness > 235) continue; // skip bg/overexposed
+
+      // HSV conversion
+      const rn = R / 255, gn = G / 255, bn = B / 255;
+      const max = Math.max(rn, gn, bn), min = Math.min(rn, gn, bn);
+      const delta = max - min;
+      let h = 0;
+      if (delta > 0.01) {
+        if (max === rn)      h = 60 * (((gn - bn) / delta) % 6);
+        else if (max === gn) h = 60 * ((bn - rn) / delta + 2);
+        else                 h = 60 * ((rn - gn) / delta + 4);
+        if (h < 0) h += 360;
+      }
+      const s = max > 0 ? delta / max : 0;
+      const v = max;
+
+      const isGreen  = h >= 70 && h <= 160 && s > 0.15;
+      const isYellow = h >= 35 && h < 75  && s > 0.25 && v > 0.35 && !isGreen;
+      const isBrown  = h >= 10 && h < 45  && s > 0.20 && v < 0.65;
+      const isDark   = v < 0.25 && s > 0.05;
+
+      if (isDark || isBrown) mask[r * SCA_COLS + c] = 2;
+      else if (isYellow)     mask[r * SCA_COLS + c] = 1;
+    }
+  }
+  return mask;
+}
+
+/**
  * Warm up the ONNX session in the background (call on app mount).
  * Silently fails if the model is unavailable.
  */
