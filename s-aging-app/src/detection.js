@@ -74,8 +74,8 @@ function preprocessImage(imgEl) {
   const N = INPUT_SIZE * INPUT_SIZE;
   const tensor = new Float32Array(3 * N);
   for (let i = 0; i < N; i++) {
-    tensor[i]         = data[i * 4]     / 255.0; // R
-    tensor[N + i]     = data[i * 4 + 1] / 255.0; // G
+    tensor[i] = data[i * 4] / 255.0; // R
+    tensor[N + i] = data[i * 4 + 1] / 255.0; // G
     tensor[2 * N + i] = data[i * 4 + 2] / 255.0; // B
   }
 
@@ -130,7 +130,7 @@ function parseDetections(output0, numMaskCoeffs, scale, padX, padY, srcW, srcH) 
   // Heuristic: the larger dimension is num_anchors
   const transposed = d1 > d2; // [1, anchors, feats]
   const numAnchors = transposed ? d1 : d2;
-  const numFeats   = transposed ? d2 : d1;
+  const numFeats = transposed ? d2 : d1;
   const nc = numFeats - 4 - numMaskCoeffs; // number of classes
 
   console.log(`[S-Aging Detection] Output dims: [${dims}]`);
@@ -228,7 +228,7 @@ function decodeMaskGrid(detections, protoOutput, imgEl, scale, padX, padY, srcW,
   const SCA_ROWS = 100;
 
   // Proto output shape: [1, nm, pH, pW] — typically [1, 32, 160, 160]
-  const protoData  = protoOutput.data;
+  const protoData = protoOutput.data;
   const nm = protoOutput.dims[1];
   const pH = protoOutput.dims[2];
   const pW = protoOutput.dims[3];
@@ -262,10 +262,10 @@ function decodeMaskGrid(detections, protoOutput, imgEl, scale, padX, padY, srcW,
     }
 
     // Bbox in proto space (original image → letterboxed 640 → proto 160)
-    const bx1 = Math.max(0,      Math.floor((det.x1 * scale + padX) * protoScale));
-    const by1 = Math.max(0,      Math.floor((det.y1 * scale + padY) * protoScale));
-    const bx2 = Math.min(pW - 1, Math.ceil ((det.x2 * scale + padX) * protoScale));
-    const by2 = Math.min(pH - 1, Math.ceil ((det.y2 * scale + padY) * protoScale));
+    const bx1 = Math.max(0, Math.floor((det.x1 * scale + padX) * protoScale));
+    const by1 = Math.max(0, Math.floor((det.y1 * scale + padY) * protoScale));
+    const bx2 = Math.min(pW - 1, Math.ceil((det.x2 * scale + padX) * protoScale));
+    const by2 = Math.min(pH - 1, Math.ceil((det.y2 * scale + padY) * protoScale));
 
     // Sigmoid + threshold within bbox → merge into combined mask
     for (let y = by1; y <= by2; y++) {
@@ -280,8 +280,8 @@ function decodeMaskGrid(detections, protoOutput, imgEl, scale, padX, padY, srcW,
   }
 
   // Un-letterboxed region in proto space
-  const protoPadX     = Math.round(padX * protoScale);
-  const protoPadY     = Math.round(padY * protoScale);
+  const protoPadX = Math.round(padX * protoScale);
+  const protoPadY = Math.round(padY * protoScale);
   const protoContentW = Math.max(1, Math.round(srcW * scale * protoScale));
   const protoContentH = Math.max(1, Math.round(srcH * scale * protoScale));
 
@@ -294,7 +294,7 @@ function decodeMaskGrid(detections, protoOutput, imgEl, scale, padX, padY, srcW,
   // Draw original image at SCA resolution for colour classification.
   // For portrait photos, rotate 90° CW so the long axis fills the 160-wide canvas.
   const colorCanvas = document.createElement('canvas');
-  colorCanvas.width  = SCA_COLS;
+  colorCanvas.width = SCA_COLS;
   colorCanvas.height = SCA_ROWS;
   const colorCtx = colorCanvas.getContext('2d');
   if (isPortrait) {
@@ -429,5 +429,5 @@ export async function detectDisease(imgEl) {
  * Silently fails if the model is unavailable.
  */
 export function warmupSession() {
-  getSession().catch(() => {});
+  getSession().catch(() => { });
 }
