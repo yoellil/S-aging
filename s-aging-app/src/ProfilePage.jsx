@@ -5,7 +5,7 @@ import {
   Shield, KeyRound, UserPen, Camera, Trash2, Save,
   LogIn, LogOut, Fingerprint, Mail, CalendarDays, Activity,
   RefreshCw, Search, X, ArrowLeft, Users, Orbit,
-  Settings, Sun, Moon, Globe, Lock, Download, Check, Zap,
+  Settings, Sun, Moon, Globe, Lock, Download, Check, Zap, Code2,
 } from "lucide-react";
 import {
   getProfile, updateProfile, updateUsername, updatePassword,
@@ -133,7 +133,7 @@ function QuickStat({ icon: Icon, label, value, color, delay }) {
 // ══════════════════════════════════════════════════════════════════════════════
 //  PROFILE PAGE
 // ══════════════════════════════════════════════════════════════════════════════
-export default function ProfilePage({ auth, onLogout, onNavigate, setSimConfig, theme, setTheme, reduceMotion, setReduceMotion }) {
+export default function ProfilePage({ auth, onLogout, onNavigate, setSimConfig, theme, setTheme, reduceMotion, setReduceMotion, devMode, setDevMode }) {
   // No tokens. Supabase client handles auth automatically via session in localStorage.
   const userId = auth?.session?.user?.id || null;
 
@@ -352,6 +352,8 @@ export default function ProfilePage({ auth, onLogout, onNavigate, setSimConfig, 
               setTheme={setTheme}
               reduceMotion={reduceMotion}
               setReduceMotion={setReduceMotion}
+              devMode={devMode}
+              setDevMode={setDevMode}
               simLogs={simLogs}
               setSimConfig={setSimConfig}
               onClose={() => setSettingsOpen(false)}
@@ -954,7 +956,7 @@ function SimLogDetailModal({ log, onClose, setSimConfig, onNavigate, actionLabel
 }
 
 // ── Settings Modal ───────────────────────────────────────────────────────────
-function SettingsModal({ profile, theme, setTheme, reduceMotion, setReduceMotion, simLogs, setSimConfig, onClose, onSaved }) {
+function SettingsModal({ profile, theme, setTheme, reduceMotion, setReduceMotion, devMode, setDevMode, simLogs, setSimConfig, onClose, onSaved }) {
   const [isPublic, setIsPublic] = useState(profile?.is_public ?? false);
   const [defaultDisease, setDefaultDisease] = useState(profile?.default_disease ?? "black_sigatoka");
   const [defaultTemp, setDefaultTemp] = useState(profile?.default_temp ?? 26);
@@ -1029,6 +1031,25 @@ function SettingsModal({ profile, theme, setTheme, reduceMotion, setReduceMotion
                 <div className="settings-toggle-thumb" />
               </div>
               <span className="settings-toggle-label">{reduceMotion ? "On" : "Off"}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Developer */}
+        <div className="settings-section">
+          <div className="settings-section-label">Developer</div>
+          <div className="settings-row">
+            <div>
+              <div className="settings-row-label" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <Code2 size={13} /> Developer mode
+              </div>
+              <div className="settings-row-desc">Overlays the SCA simulation grid on the 3D leaf in blue, showing the exact shape and coverage of the leaf boundary mask.</div>
+            </div>
+            <div className="settings-toggle" onClick={() => setDevMode(v => !v)}>
+              <div className={`settings-toggle-track${devMode ? " on" : ""}`}>
+                <div className="settings-toggle-thumb" />
+              </div>
+              <span className="settings-toggle-label">{devMode ? "On" : "Off"}</span>
             </div>
           </div>
         </div>

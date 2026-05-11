@@ -1453,10 +1453,25 @@ function UploadPage({ onNavigate, setSimConfig }) {
 // ══════════════════════════════════════════════════════════════════════════════
 const _LEAF_ROWS = 100, _LEAF_COLS = 160, _TEX = 512;
 
-function LeafViewer3D({ frame, disease }) {
+// Leaf boundary mask (matches Python leaf_mask_for_grid in simulation/mesh.py)
+const _LEAF_MASK = (() => {
+  const mask = new Uint8Array(_LEAF_ROWS * _LEAF_COLS);
+  for (let r = 0; r < _LEAF_ROWS; r++) {
+    const v = -1.0 + (2.0 * r) / (_LEAF_ROWS - 1);
+    for (let c = 0; c < _LEAF_COLS; c++) {
+      const u = -1.0 + (2.0 * c) / (_LEAF_COLS - 1);
+      mask[r * _LEAF_COLS + c] = (u * u + v * v) <= 1.0 ? 1 : 0;
+    }
+  }
+  return mask;
+})();
+
+function LeafViewer3D({ frame, disease, devMode }) {
   const mountRef = useRef(null);
   const stateRef = useRef(null);
   const pendingRef = useRef(null); // holds { gridData, intensityData } while scene loads
+  const lastPaintArgsRef = useRef(null);
+  const devModeRef = useRef(devMode);
 
   const decodeB64 = (b64) => {
     const bin = atob(b64);
@@ -1466,6 +1481,7 @@ function LeafViewer3D({ frame, disease }) {
   };
 
   const paintCanvas = useCallback((gridData, intensityData, diseaseType) => {
+    lastPaintArgsRef.current = { gridData, intensityData, diseaseType };
     const s = stateRef.current;
     if (!s) { pendingRef.current = { gridData, intensityData, diseaseType }; return; }
     const { ctx, baseImg, texture } = s;
@@ -1485,6 +1501,19 @@ function LeafViewer3D({ frame, disease }) {
     const UV_Y_MIN = 0.0,    UV_Y_RANGE = 1.0;
     const cellW = UV_X_RANGE * _TEX / _LEAF_COLS;
     const cellH = UV_Y_RANGE * _TEX / _LEAF_ROWS;
+
+    // Dev mode: draw all leaf boundary cells in blue before disease states
+    if (devModeRef.current) {
+      ctx.fillStyle = "rgba(40, 120, 255, 0.22)";
+      for (let r = 0; r < _LEAF_ROWS; r++) {
+        for (let c = 0; c < _LEAF_COLS; c++) {
+          if (!_LEAF_MASK[r * _LEAF_COLS + c]) continue;
+          const px = (UV_X_MIN + (c / _LEAF_COLS) * UV_X_RANGE) * _TEX;
+          const py = (UV_Y_MIN + (r / _LEAF_ROWS) * UV_Y_RANGE) * _TEX;
+          ctx.fillRect(px, py, cellW + 0.5, cellH + 0.5);
+        }
+      }
+    }
 
     for (let r = 0; r < _LEAF_ROWS; r++) {
       for (let c = 0; c < _LEAF_COLS; c++) {
@@ -1626,6 +1655,14 @@ function LeafViewer3D({ frame, disease }) {
     paintCanvas(frame.gridData, frame.intensityData, disease);
   }, [frame, disease, paintCanvas]);
 
+  useEffect(() => { devModeRef.current = devMode; }, [devMode]);
+
+  useEffect(() => {
+    if (!lastPaintArgsRef.current) return;
+    const { gridData, intensityData, diseaseType } = lastPaintArgsRef.current;
+    paintCanvas(gridData, intensityData, diseaseType);
+  }, [devMode, paintCanvas]);
+
   return (
     <div
       ref={mountRef}
@@ -1637,7 +1674,7 @@ function LeafViewer3D({ frame, disease }) {
 // ══════════════════════════════════════════════════════════════════════════════
 //  SIMULATION PAGE  — PyVista backend-driven
 // ══════════════════════════════════════════════════════════════════════════════
-function SimulationPage({ config }) {
+function SimulationPage({ config, devMode }) {
   const { disease = "black_sigatoka", temp = 26, rh = 85, density = "medium", months = 30,
     detections = null, maskGrid = null, imgWidth = null, imgHeight = null,
     imageData = null } = config || {};
@@ -1854,7 +1891,7 @@ function SimulationPage({ config }) {
                   <>
                     {/* Interactive 3-D leaf viewer */}
                     {simState !== "error" ? (
-                      <LeafViewer3D frame={currentFrame} disease={disease} />
+                      <LeafViewer3D frame={currentFrame} disease={disease} devMode={devMode} />
                     ) : (
                       <div style={{ padding: 32, textAlign: "center" }}>
                         <div style={{ fontSize: 13, color: COLORS.red400, marginBottom: 10 }}>
@@ -2390,6 +2427,7 @@ export default function SAgingApp() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [theme, setTheme] = useState(() => localStorage.getItem("saging-theme") || "light");
   const [reduceMotion, setReduceMotion] = useState(() => localStorage.getItem("saging-reduce-motion") === "true");
+  const [devMode, setDevMode] = useState(() => localStorage.getItem("saging-dev-mode") === "true");
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
@@ -2399,6 +2437,10 @@ export default function SAgingApp() {
   useEffect(() => {
     localStorage.setItem("saging-reduce-motion", reduceMotion);
   }, [reduceMotion]);
+
+  useEffect(() => {
+    localStorage.setItem("saging-dev-mode", devMode);
+  }, [devMode]);
 
   // ── Auth state ─────────────────────────────────────────────────────────
   // Single credential: Supabase JWT (session.access_token). Auth-service validates it on each request.
@@ -2581,9 +2623,9 @@ export default function SAgingApp() {
 
       {page === "home" && <HomePage onNavigate={navigate} reduceMotion={reduceMotion} />}
       {page === "upload" && <UploadPage onNavigate={navigate} setSimConfig={setSimConfig} />}
-      {page === "simulation" && <SimulationPage config={simConfig} />}
+      {page === "simulation" && <SimulationPage config={simConfig} devMode={devMode} />}
       {page === "about" && <AboutPage />}
-      {page === "profile" && <ProfilePage auth={auth} onLogout={handleLogout} onNavigate={navigate} setSimConfig={setSimConfig} theme={theme} setTheme={setTheme} reduceMotion={reduceMotion} setReduceMotion={setReduceMotion} />}
+      {page === "profile" && <ProfilePage auth={auth} onLogout={handleLogout} onNavigate={navigate} setSimConfig={setSimConfig} theme={theme} setTheme={setTheme} reduceMotion={reduceMotion} setReduceMotion={setReduceMotion} devMode={devMode} setDevMode={setDevMode} />}
 
       <footer className="footer">
         <span>S-Aging · FEU Institute of Technology · 2026</span>
