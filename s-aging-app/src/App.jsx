@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import Antigravity from "./Antigravity";
 import CurvedLoop from "./CurvedLoop";
-import { detectDisease, colorSegMask, warmupSession } from "./detection";
+import { detectDisease, colorSegMask, combinedMask, warmupSession } from "./detection";
 import { streamSimulation } from "./api";
 import { saveSimulationLog } from "./profileApi";
 import { supabase } from "./utils/supabase";
@@ -1140,7 +1140,7 @@ function HomePage({ onNavigate, reduceMotion }) {
 // ══════════════════════════════════════════════════════════════════════════════
 //  UPLOAD PAGE
 // ══════════════════════════════════════════════════════════════════════════════
-function UploadPage({ onNavigate, setSimConfig }) {
+function UploadPage({ onNavigate, setSimConfig, devMode }) {
   const [selected, setSelected] = useState("black_sigatoka");
   const [temp, setTemp] = useState(26);
   const [rh, setRh] = useState(85);
@@ -1152,7 +1152,7 @@ function UploadPage({ onNavigate, setSimConfig }) {
   const [detections, setDetections] = useState(null);   // array from detectDisease()
   const [maskGrid, setMaskGrid] = useState(null);       // 160×100 flat array from YOLO seg masks
   const [detectionError, setDetectionError] = useState(null);
-  const [useColorSeg, setUseColorSeg] = useState(false);
+  const [maskMode, setMaskMode] = useState("combined"); // "combined" | "yolo" | "colorseg"
   const fileInputRef = useRef(null);
   const imgRef = useRef(null);
 
@@ -1190,8 +1190,9 @@ function UploadPage({ onNavigate, setSimConfig }) {
           .filter(d => d.diseaseKey !== "unknown" && d.diseaseKey !== "healthy")
           .sort((a, b) => b.score - a.score)[0];
         if (top) setSelected(top.diseaseKey);
-        // Use color seg mask or YOLO mask depending on mode
-        setMaskGrid(useColorSeg ? colorSegMask(imgEl) : result.maskGrid);
+        if (maskMode === "colorseg") setMaskGrid(colorSegMask(imgEl));
+        else if (maskMode === "yolo")    setMaskGrid(result.maskGrid ?? new Array(160 * 100).fill(0));
+        else                             setMaskGrid(combinedMask(result.maskGrid, imgEl));
       } catch (err) {
         if (!cancelled) setDetectionError("Detection failed: " + err.message);
       } finally {
@@ -1208,7 +1209,7 @@ function UploadPage({ onNavigate, setSimConfig }) {
     };
     tryRun();
     return () => { cancelled = true; };
-  }, [uploadedImage, useColorSeg]);
+  }, [uploadedImage, maskMode]);
 
   const handleFileSelect = useCallback((file) => {
     if (!file) return;
@@ -1331,19 +1332,20 @@ function UploadPage({ onNavigate, setSimConfig }) {
         {uploadedImage && (
           <div className="detection-card" style={{ marginTop: 16 }}>
             <div className="detection-title" style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <span>{useColorSeg ? "Color segmentation" : "YOLOv11 detection"}</span>
-              <button
-                onClick={() => setUseColorSeg(v => !v)}
-                style={{
-                  fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 20,
-                  border: "1px solid var(--border)", cursor: "pointer",
-                  background: useColorSeg ? "var(--green-100, #C0DD97)" : "var(--bg2)",
-                  color: useColorSeg ? "#3B6D11" : "var(--text-muted)",
-                  transition: "all 0.15s",
-                }}
-              >
-                {useColorSeg ? "Color seg" : "YOLO model"}
-              </button>
+              <span>YOLOv11 detection</span>
+              {devMode && (
+                <div style={{ display: "flex", gap: 4 }}>
+                  {[["combined", "Combined"], ["yolo", "YOLO"], ["colorseg", "Color Seg"]].map(([val, label]) => (
+                    <button key={val} onClick={() => setMaskMode(val)} style={{
+                      fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 20,
+                      border: "1px solid var(--border)", cursor: "pointer",
+                      transition: "all 0.15s",
+                      background: maskMode === val ? "var(--green-100, #C0DD97)" : "var(--bg2)",
+                      color: maskMode === val ? "#3B6D11" : "var(--text-muted)",
+                    }}>{label}</button>
+                  ))}
+                </div>
+              )}
             </div>
 
             {detecting && (
@@ -2258,7 +2260,38 @@ function SimulationPage({ config, devMode }) {
 // ══════════════════════════════════════════════════════════════════════════════
 //  ABOUT PAGE
 // ══════════════════════════════════════════════════════════════════════════════
-function AboutPage() {
+function AboutPage({ setDevMode }) {
+  const TARGETS = { "Justine Gabriel P. Rodriguez": 6, "Yoel Dwayne G. Reyes": 7 };
+  const clickCountsRef = useRef({});
+  const [counts, setCounts] = useState({});
+  const [counterVisible, setCounterVisible] = useState(false);
+  const hideTimerRef = useRef(null);
+  const [toast, setToast] = useState(null);
+
+  const showToast = (msg) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 2000);
+  };
+
+  const handleAvatarClick = (name) => {
+    if (!(name in TARGETS)) return;
+    clickCountsRef.current[name] = (clickCountsRef.current[name] ?? 0) + 1;
+    setCounts({ ...clickCountsRef.current });
+    setCounterVisible(true);
+    clearTimeout(hideTimerRef.current);
+    hideTimerRef.current = setTimeout(() => setCounterVisible(false), 2500);
+
+    const allMet = Object.entries(TARGETS).every(([n, t]) => (clickCountsRef.current[n] ?? 0) >= t);
+    if (allMet) {
+      clickCountsRef.current = {};
+      setCounts({});
+      setCounterVisible(false);
+      clearTimeout(hideTimerRef.current);
+      setDevMode(true);
+      showToast("Developer mode enabled");
+    }
+  };
+
   return (
     <div className="page-wrapper">
       <div className="about-page">
@@ -2325,10 +2358,10 @@ function AboutPage() {
             <h3>Research team</h3>
             <div className="team-grid">
               {[
-                { name: "Justine Gabriel P. Rodriguez", role: "BS Computer Science", focus: "Project Manager", avatar: "/avatar-justine.png", linkedin: "https://www.linkedin.com/in/justine-gabriel-rodriguez/" },
-                { name: "Jimiel D. Balitayo", role: "BS Computer Science", focus: "Researcher & Front-end", avatar: "/avatar-jimiel.png", linkedin: "https://www.linkedin.com/in/jimiel-balitayo/" },
-                { name: "Darryl B. Baranda", role: "BS Computer Science", focus: "Researcher & Quality Testing", avatar: "/avatar-darryl.png", linkedin: "https://www.linkedin.com/in/darryl-baranda/" },
-                { name: "Yoel Dwayne G. Reyes", role: "BS Computer Science", focus: "Main Programmer, ML, & UI/UX", avatar: "/avatar-yoel.png", linkedin: "https://www.linkedin.com/in/yoel-dwayne-reyes-9720b0308/" },
+                { name: "Justine Gabriel P. Rodriguez", role: "BS Computer Science", focus: "Project Manager", avatar: "/avatar-justine.jpg", linkedin: "https://www.linkedin.com/in/justine-gabriel-rodriguez/" },
+                { name: "Jimiel D. Balitayo", role: "BS Computer Science", focus: "Researcher & Front-end", avatar: "/avatar-jimiel.jpg", linkedin: "https://www.linkedin.com/in/jimiel-balitayo/" },
+                { name: "Darryl B. Baranda", role: "BS Computer Science", focus: "Researcher & Quality Testing", avatar: "/avatar-darryl.jpg", linkedin: "https://www.linkedin.com/in/darryl-baranda/" },
+                { name: "Yoel Dwayne G. Reyes", role: "BS Computer Science", focus: "Main Programmer, ML, & UI/UX", avatar: "/avatar-yoel.jpg", linkedin: "https://www.linkedin.com/in/yoel-dwayne-reyes-9720b0308/" },
 
               ].map(({ name, role, focus, avatar, linkedin }) => {
                 const initials = name.split(" ").map(p => p[0]).filter((_, i, a) => i === 0 || i === a.length - 1).join("");
@@ -2341,7 +2374,7 @@ function AboutPage() {
                     viewport={{ once: true, margin: "-30px" }}
                     transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
                   >
-                    <div className="team-avatar">
+                    <div className="team-avatar" onClick={() => handleAvatarClick(name)} style={{ cursor: "pointer" }}>
                       <img src={avatar} alt={name} onError={e => { e.currentTarget.style.display = "none"; e.currentTarget.nextSibling.style.display = "flex"; }} />
                       <span style={{ display: "none" }}>{initials}</span>
                     </div>
@@ -2431,6 +2464,47 @@ function AboutPage() {
           </div>
         </FadeIn>
       </div>
+
+      {counterVisible && (
+        <div style={{
+          position: "fixed", right: 20, top: "50%", transform: "translateY(-50%)",
+          background: "var(--bg2)", border: "1px solid var(--border)",
+          borderRadius: 12, padding: "10px 16px", fontSize: 12, fontWeight: 500,
+          color: "var(--text-muted)", boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
+          zIndex: 9999, pointerEvents: "none", display: "flex", flexDirection: "column", gap: 6,
+        }}>
+          {Object.entries(TARGETS).map(([name, target]) => {
+            const first = name.split(" ")[0];
+            const current = counts[name] ?? 0;
+            return (
+              <div key={name} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ width: 48 }}>{first}</span>
+                <div style={{ display: "flex", gap: 3 }}>
+                  {Array.from({ length: target }, (_, i) => (
+                    <div key={i} style={{
+                      width: 8, height: 8, borderRadius: "50%",
+                      background: i < current ? "var(--green-400, #7CB518)" : "var(--border)",
+                      transition: "background 0.15s",
+                    }} />
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {toast && (
+        <div style={{
+          position: "fixed", bottom: 28, left: "50%", transform: "translateX(-50%)",
+          background: "var(--bg2)", border: "1px solid var(--border)",
+          borderRadius: 20, padding: "8px 20px", fontSize: 13, fontWeight: 500,
+          color: "var(--text)", boxShadow: "0 4px 16px rgba(0,0,0,0.12)", zIndex: 9999,
+          pointerEvents: "none",
+        }}>
+          {toast}
+        </div>
+      )}
     </div>
   );
 }
@@ -2635,9 +2709,9 @@ export default function SAgingApp() {
       )}
 
       {page === "home" && <HomePage onNavigate={navigate} reduceMotion={reduceMotion} />}
-      {page === "upload" && <UploadPage onNavigate={navigate} setSimConfig={setSimConfig} />}
+      {page === "upload" && <UploadPage onNavigate={navigate} setSimConfig={setSimConfig} devMode={devMode} />}
       {page === "simulation" && <SimulationPage config={simConfig} devMode={devMode} />}
-      {page === "about" && <AboutPage />}
+      {page === "about" && <AboutPage setDevMode={setDevMode} />}
       {page === "profile" && <ProfilePage auth={auth} onLogout={handleLogout} onNavigate={navigate} setSimConfig={setSimConfig} theme={theme} setTheme={setTheme} reduceMotion={reduceMotion} setReduceMotion={setReduceMotion} devMode={devMode} setDevMode={setDevMode} />}
 
       <footer className="footer">

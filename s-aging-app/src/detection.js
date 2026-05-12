@@ -218,11 +218,38 @@ function parseDetections(output0, numMaskCoeffs, scale, padX, padY, srcW, srcH) 
  *   2. Sigmoid + threshold within the detection bbox.
  *   3. Combine all disease masks into a single 160×160 confidence map.
  *   4. Remove letterbox padding, resample to the 160×100 SCA lattice.
- *   5. Classify each masked pixel by sampling the original image brightness:
- *      dark (brown/black) → necrotic (2), lighter (yellow/brown) → infected (1).
+ *   5. Classify each masked pixel via HSV: necrotic (2), infected (1), or healthy (0).
+ *      If YOLO confirmed disease but HSV reads green, defaults to infected (1).
  *
  * @returns {Array<number>|null}  Flat array [16000] of 0/1/2, or null.
  */
+
+// Shared HSV pixel classifier used by both YOLO mask decoding and colorSegMask.
+// Returns 2 (necrotic), 1 (infected), or 0 (healthy/background).
+function classifyHSV(R, G, B) {
+  const brightness = (R + G + B) / 3;
+  if (brightness < 25 || brightness > 235) return 0;
+  const rn = R / 255, gn = G / 255, bn = B / 255;
+  const max = Math.max(rn, gn, bn), min = Math.min(rn, gn, bn);
+  const delta = max - min;
+  let h = 0;
+  if (delta > 0.01) {
+    if (max === rn)      h = 60 * (((gn - bn) / delta) % 6);
+    else if (max === gn) h = 60 * ((bn - rn) / delta + 2);
+    else                 h = 60 * ((rn - gn) / delta + 4);
+    if (h < 0) h += 360;
+  }
+  const s = max > 0 ? delta / max : 0;
+  const v = max;
+  const isGreen  = h >= 70 && h <= 160 && s > 0.15;
+  const isYellow = h >= 35 && h < 75  && s > 0.25 && v > 0.35 && !isGreen;
+  const isBrown  = h >= 10 && h < 45  && s > 0.20 && v < 0.65;
+  const isDark   = v < 0.25 && s > 0.05;
+  if (isDark || isBrown) return 2;
+  if (isYellow) return 1;
+  return 0;
+}
+
 function decodeMaskGrid(detections, protoOutput, imgEl, scale, padX, padY, srcW, srcH) {
   const SCA_COLS = 160;
   const SCA_ROWS = 100;
@@ -329,19 +356,11 @@ function decodeMaskGrid(detections, protoOutput, imgEl, scale, padX, padY, srcW,
 
       if (px >= 0 && px < pW && py >= 0 && py < pH && combinedMask[py * pW + px] > 0) {
         const pixIdx = (r * SCA_COLS + c) * 4;
-        const R = colorData[pixIdx];
-        const G = colorData[pixIdx + 1];
-        const B = colorData[pixIdx + 2];
-        const brightness = (R + G + B) / 3;
-
-        // Dark brown/black → necrotic (2);  yellow/brown → infected (1)
-        if (brightness < 80) {
-          maskGrid[r * SCA_COLS + c] = 2;
-          necCount++;
-        } else {
-          maskGrid[r * SCA_COLS + c] = 1;
-          infCount++;
-        }
+        const R = colorData[pixIdx], G = colorData[pixIdx + 1], B = colorData[pixIdx + 2];
+        // YOLO confirmed disease here; if HSV reads green (early/uncolored lesion), treat as infected
+        const state = classifyHSV(R, G, B) || 1;
+        maskGrid[r * SCA_COLS + c] = state;
+        if (state === 2) necCount++; else infCount++;
       }
     }
   }
@@ -460,33 +479,26 @@ export function colorSegMask(imgEl) {
         }
       }
       const R = sumR / 4, G = sumG / 4, B = sumB / 4;
-      const brightness = (R + G + B) / 3;
-      if (brightness < 25 || brightness > 235) continue; // skip bg/overexposed
-
-      // HSV conversion
-      const rn = R / 255, gn = G / 255, bn = B / 255;
-      const max = Math.max(rn, gn, bn), min = Math.min(rn, gn, bn);
-      const delta = max - min;
-      let h = 0;
-      if (delta > 0.01) {
-        if (max === rn)      h = 60 * (((gn - bn) / delta) % 6);
-        else if (max === gn) h = 60 * ((bn - rn) / delta + 2);
-        else                 h = 60 * ((rn - gn) / delta + 4);
-        if (h < 0) h += 360;
-      }
-      const s = max > 0 ? delta / max : 0;
-      const v = max;
-
-      const isGreen  = h >= 70 && h <= 160 && s > 0.15;
-      const isYellow = h >= 35 && h < 75  && s > 0.25 && v > 0.35 && !isGreen;
-      const isBrown  = h >= 10 && h < 45  && s > 0.20 && v < 0.65;
-      const isDark   = v < 0.25 && s > 0.05;
-
-      if (isDark || isBrown) mask[r * SCA_COLS + c] = 2;
-      else if (isYellow)     mask[r * SCA_COLS + c] = 1;
+      const state = classifyHSV(R, G, B);
+      if (state > 0) mask[r * SCA_COLS + c] = state;
     }
   }
   return mask;
+}
+
+/**
+ * Merges a YOLO-decoded maskGrid with a colorSegMask on the same image.
+ * Each cell takes the higher severity state (Math.max), so Color Seg fills
+ * spots YOLO missed and YOLO anchors regions Color Seg would misclassify.
+ *
+ * @param {Array<number>} yoloMask  Flat 160×100 array from decodeMaskGrid (or zeros if null)
+ * @param {HTMLImageElement} imgEl  The uploaded image element
+ * @returns {Array<number>}  Merged flat 160×100 array of 0/1/2
+ */
+export function combinedMask(yoloMask, imgEl) {
+  const csMask = colorSegMask(imgEl);
+  const base = yoloMask ?? new Array(160 * 100).fill(0);
+  return base.map((v, i) => Math.max(v, csMask[i]));
 }
 
 /**

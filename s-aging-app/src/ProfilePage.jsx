@@ -1035,24 +1035,26 @@ function SettingsModal({ profile, theme, setTheme, reduceMotion, setReduceMotion
           </div>
         </div>
 
-        {/* Developer */}
-        <div className="settings-section">
-          <div className="settings-section-label">Developer</div>
-          <div className="settings-row">
-            <div>
-              <div className="settings-row-label" style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <Code2 size={13} /> Developer mode
+        {/* Developer — only visible when dev mode is active */}
+        {devMode && (
+          <div className="settings-section">
+            <div className="settings-section-label">Developer</div>
+            <div className="settings-row">
+              <div>
+                <div className="settings-row-label" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <Code2 size={13} /> Developer mode
+                </div>
+                <div className="settings-row-desc">Overlays the SCA simulation grid on the 3D leaf in blue. Toggle off to exit developer mode.</div>
               </div>
-              <div className="settings-row-desc">Overlays the SCA simulation grid on the 3D leaf in blue, showing the exact shape and coverage of the leaf boundary mask.</div>
-            </div>
-            <div className="settings-toggle" onClick={() => setDevMode(v => !v)}>
-              <div className={`settings-toggle-track${devMode ? " on" : ""}`}>
-                <div className="settings-toggle-thumb" />
+              <div className="settings-toggle" onClick={() => setDevMode(false)}>
+                <div className="settings-toggle-track on">
+                  <div className="settings-toggle-thumb" />
+                </div>
+                <span className="settings-toggle-label">On</span>
               </div>
-              <span className="settings-toggle-label">{devMode ? "On" : "Off"}</span>
             </div>
           </div>
-        </div>
+        )}
 
         {/* Privacy */}
         <div className="settings-section">
