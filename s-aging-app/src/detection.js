@@ -25,7 +25,7 @@ export const CLASS_TO_DISEASE = {
 
 const MODEL_URL = '/best.onnx';
 const INPUT_SIZE = 640;
-const CONF_THRESH = 0.25;
+const CONF_THRESH = 0.27;
 const IOU_THRESH = 0.45;
 
 // ── SESSION (singleton) ───────────────────────────────────────────────────────
@@ -250,115 +250,51 @@ function classifyHSV(R, G, B) {
   return 0;
 }
 
-function decodeMaskGrid(detections, protoOutput, imgEl, scale, padX, padY, srcW, srcH) {
+function decodeMaskGrid(detections, _protoOutput, imgEl, scale, padX, padY, srcW, srcH) {
   const SCA_COLS = 160;
   const SCA_ROWS = 100;
 
-  // Proto output shape: [1, nm, pH, pW] — typically [1, 32, 160, 160]
-  const protoData = protoOutput.data;
-  const nm = protoOutput.dims[1];
-  const pH = protoOutput.dims[2];
-  const pW = protoOutput.dims[3];
-  const protoPixels = pH * pW;
-
-  // classId 2 = Healthy — only decode disease classes
-  const diseaseDetections = detections.filter(
-    d => d.maskCoeffs && d.classId !== 2
-  );
+  const diseaseDetections = detections.filter(d => d.classId !== 2);
 
   if (diseaseDetections.length === 0) {
-    console.log('[S-Aging Mask] No disease detections with mask coefficients');
+    console.log('[S-Aging Mask] No disease detections');
     return null;
   }
 
-  console.log(`[S-Aging Mask] Decoding masks for ${diseaseDetections.length} disease detection(s)`);
+  console.log(`[S-Aging Mask] HSV-classifying within ${diseaseDetections.length} disease bbox(es)`);
 
-  // Combined confidence map at proto resolution
-  const combinedMask = new Float32Array(protoPixels);
-  const protoScale = pW / INPUT_SIZE; // 160/640 = 0.25
-
-  for (const det of diseaseDetections) {
-    // coeffs[nm] @ protos[nm, protoPixels] → rawMask[protoPixels]
-    const rawMask = new Float32Array(protoPixels);
-    for (let j = 0; j < protoPixels; j++) {
-      let sum = 0;
-      for (let m = 0; m < nm; m++) {
-        sum += det.maskCoeffs[m] * protoData[m * protoPixels + j];
-      }
-      rawMask[j] = sum;
-    }
-
-    // Bbox in proto space (original image → letterboxed 640 → proto 160)
-    const bx1 = Math.max(0, Math.floor((det.x1 * scale + padX) * protoScale));
-    const by1 = Math.max(0, Math.floor((det.y1 * scale + padY) * protoScale));
-    const bx2 = Math.min(pW - 1, Math.ceil((det.x2 * scale + padX) * protoScale));
-    const by2 = Math.min(pH - 1, Math.ceil((det.y2 * scale + padY) * protoScale));
-
-    // Sigmoid + threshold within bbox → merge into combined mask
-    for (let y = by1; y <= by2; y++) {
-      for (let x = bx1; x <= bx2; x++) {
-        const idx = y * pW + x;
-        const sig = 1.0 / (1.0 + Math.exp(-rawMask[idx]));
-        if (sig > 0.5) {
-          combinedMask[idx] = Math.max(combinedMask[idx], sig);
-        }
-      }
-    }
-  }
-
-  // Un-letterboxed region in proto space
-  const protoPadX = Math.round(padX * protoScale);
-  const protoPadY = Math.round(padY * protoScale);
-  const protoContentW = Math.max(1, Math.round(srcW * scale * protoScale));
-  const protoContentH = Math.max(1, Math.round(srcH * scale * protoScale));
-
-  // Portrait photos (srcH > srcW) have the leaf's long axis running vertically.
-  // The SCA grid is landscape (COLS=160 = leaf length, ROWS=100 = leaf width).
-  // We rotate the coordinate sampling 90° for portrait so the leaf length direction
-  // in the photo (vertical) maps to SCA columns and width (horizontal) maps to rows.
   const isPortrait = srcH > srcW;
 
-  // Draw original image at SCA resolution for colour classification.
-  // For portrait photos, rotate 90° CW so the long axis fills the 160-wide canvas.
   const colorCanvas = document.createElement('canvas');
-  colorCanvas.width = SCA_COLS;
-  colorCanvas.height = SCA_ROWS;
+  colorCanvas.width = srcW;
+  colorCanvas.height = srcH;
   const colorCtx = colorCanvas.getContext('2d');
-  if (isPortrait) {
-    colorCtx.save();
-    colorCtx.translate(SCA_COLS, 0);
-    colorCtx.rotate(Math.PI / 2);
-    colorCtx.drawImage(imgEl, 0, 0, SCA_ROWS, SCA_COLS);
-    colorCtx.restore();
-  } else {
-    colorCtx.drawImage(imgEl, 0, 0, SCA_COLS, SCA_ROWS);
-  }
-  const colorData = colorCtx.getImageData(0, 0, SCA_COLS, SCA_ROWS).data;
+  colorCtx.drawImage(imgEl, 0, 0, srcW, srcH);
+  const colorData = colorCtx.getImageData(0, 0, srcW, srcH).data;
 
-  // Resample combined proto mask → SCA grid, classify by brightness.
-  // Portrait: c (leaf length) ← photo y; r (leaf width) ← photo x (rotated 90° CW).
   const maskGrid = new Array(SCA_ROWS * SCA_COLS).fill(0);
   let infCount = 0, necCount = 0;
 
   for (let r = 0; r < SCA_ROWS; r++) {
     for (let c = 0; c < SCA_COLS; c++) {
-      let px, py;
+      let imgX, imgY;
       if (isPortrait) {
-        // 90° CW rotation: leaf tip at portrait-top maps to SCA col 159 (leaf tip).
-        // r (leaf width) ← photo-x: px = r/SCA_ROWS * contentW
-        // c (leaf length) ← photo-y inverted: py = (1 - c/SCA_COLS) * contentH
-        px = Math.round(protoPadX + (r / SCA_ROWS) * protoContentW);
-        py = Math.round(protoPadY + (1 - c / SCA_COLS) * protoContentH);
+        imgX = Math.round((r / SCA_ROWS) * srcW);
+        imgY = Math.round((1 - c / SCA_COLS) * srcH);
       } else {
-        px = Math.round(protoPadX + (c / SCA_COLS) * protoContentW);
-        py = Math.round(protoPadY + (r / SCA_ROWS) * protoContentH);
+        imgX = Math.round((c / SCA_COLS) * srcW);
+        imgY = Math.round((r / SCA_ROWS) * srcH);
       }
 
-      if (px >= 0 && px < pW && py >= 0 && py < pH && combinedMask[py * pW + px] > 0) {
-        const pixIdx = (r * SCA_COLS + c) * 4;
-        const R = colorData[pixIdx], G = colorData[pixIdx + 1], B = colorData[pixIdx + 2];
-        // YOLO confirmed disease here; if HSV reads green (early/uncolored lesion), treat as infected
-        const state = classifyHSV(R, G, B) || 1;
+      const inBox = diseaseDetections.some(
+        d => imgX >= d.x1 && imgX <= d.x2 && imgY >= d.y1 && imgY <= d.y2
+      );
+      if (!inBox) continue;
+
+      const pixIdx = (Math.min(srcH - 1, imgY) * srcW + Math.min(srcW - 1, imgX)) * 4;
+      const R = colorData[pixIdx], G = colorData[pixIdx + 1], B = colorData[pixIdx + 2];
+      const state = classifyHSV(R, G, B);
+      if (state > 0) {
         maskGrid[r * SCA_COLS + c] = state;
         if (state === 2) necCount++; else infCount++;
       }
@@ -496,9 +432,8 @@ export function colorSegMask(imgEl) {
  * @returns {Array<number>}  Merged flat 160×100 array of 0/1/2
  */
 export function combinedMask(yoloMask, imgEl) {
-  const csMask = colorSegMask(imgEl);
-  const base = yoloMask ?? new Array(160 * 100).fill(0);
-  return base.map((v, i) => Math.max(v, csMask[i]));
+  if (yoloMask) return yoloMask;
+  return colorSegMask(imgEl);
 }
 
 /**

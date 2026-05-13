@@ -2266,11 +2266,20 @@ function AboutPage({ setDevMode }) {
   const [counts, setCounts] = useState({});
   const [counterVisible, setCounterVisible] = useState(false);
   const hideTimerRef = useRef(null);
+  const toastTimerRef = useRef(null);
   const [toast, setToast] = useState(null);
+
+  useEffect(() => {
+    return () => {
+      clearTimeout(hideTimerRef.current);
+      clearTimeout(toastTimerRef.current);
+    };
+  }, []);
 
   const showToast = (msg) => {
     setToast(msg);
-    setTimeout(() => setToast(null), 2000);
+    clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => setToast(null), 2000);
   };
 
   const handleAvatarClick = (name) => {

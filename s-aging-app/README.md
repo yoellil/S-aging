@@ -33,6 +33,69 @@ Two pathogens are modeled:
 
 ---
 
+## System Architecture
+
+S-Aging uses a modern client-server architecture blending edge AI with a robust backend simulation engine.
+
+### Data Flow Pipeline
+
+```text
+┌─────────────────────────────────────────────────────────────────────────┐
+│                              USER DEVICES                               │
+│  ┌───────────────────────┐                   ┌───────────────────────┐  │
+│  │    Desktop Browser    │                   │     Mobile Browser    │  │
+│  └───────────┬───────────┘                   └───────────┬───────────┘  │
+└──────────────│───────────────────────────────────────────│──────────────┘
+               └─────────────────────┬─────────────────────┘
+                                     │
+┌────────────────────────────────────▼────────────────────────────────────┐
+│                           CLIENT / FRONTEND                             │
+│                                                                         │
+│  ┌────────────────┐               ┌──────────────────┐                  │
+│  │   React UI     │    Upload     │ Edge Inference   │                  │
+│  │  (Three.js)    │ ────────────> │ YOLOv11-seg      │                  │
+│  └─┬──┬───▲───────┘               │ (ONNX Web)       │                  │
+│    │  │   │                       └────────┬─────────┘                  │
+│    │  │   │                                │                            │
+│    │  │   │    ┌───────────────────────────▼─────────┐                  │
+│    │  │   │    │ Mask Refinement (HSV Color Seg)     │                  │
+│    │  │   │    └───────────────────────────┬─────────┘                  │
+│    │  │   │                                │                            │
+└────│──│───│────────────────────────────────│────────────────────────────┘
+     │  │   │                                │
+     │  │   │ SSE Stream                     │ POST Request
+     │  │   │ (3D Frames)                    │ (Grid+Params)
+     │  │   │                                │
+     │  │ ┌─│────────────────────────────────│────────────┐
+     │  │ │ │         SERVER / BACKEND       │            │
+     │  │ │ │                                │            │
+     │  │ │ │  ┌───────────────┐    ┌────────▼─────────┐  │
+     │  │ │ │  │FastAPI Stream │<───│ SCA Engine       │  │
+     │  │ │ │  │Controller     │    │ (Moore 8-cell)   │  │
+     │  │ │ │  └──────▲────────┘    └────────┬─────────┘  │
+     │  │ │ │         │                      │            │
+     │  │ │ │  ┌──────┴──────────────────────▼─────────┐  │
+     │  │ │ │  │   PyVista 3D Mesh & Texture Updater   │  │
+     │  │ │ │  │       (Bilinear Interpolation)        │  │
+     │  │ │ │  └───────────────────────────────────────┘  │
+     │  │ └─│─────────────────────────────────────────────┘
+     │  │   │
+     │  └─┐ │
+     │    │ │ Auth & Profiles
+     │    ▼ ▼
+┌────▼─────────────────┐
+│       DATABASE       │
+│  Supabase (Postgres) │
+│  + Custom Auth API   │
+└──────────────────────┘
+```
+
+- **Edge Inference:** By using `onnxruntime-web`, the YOLOv11 segmentation runs entirely on the client's device, ensuring privacy and speed without needing image uploads.
+- **Mask Processing:** The model's predictions are combined with a custom HSV color-segmentation algorithm (`detection.js`) to generate an accurate 160x100 infection grid.
+- **Streaming Engine:** The FastAPI backend takes the grid and simulates the pathogen spread over time. It maps the 2D CA states onto a 3D leaf mesh using **bilinear interpolation** (`mesh.py`, `leaf_renderer.py`) for smooth color transitions, and streams the frames to the React frontend as soon as they are computed.
+
+---
+
 ## Getting started
 
 ### Prerequisites

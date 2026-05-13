@@ -218,7 +218,7 @@ export default function ExplainabilityDashboard({ disease, month, simMode, timeS
         </div>
         <div>
           <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>Diagnostic &amp; Management Tips</span>
-          <span style={{
+          <span className="explain-header-badge" style={{
             marginLeft: 8, fontSize: 11, color: "var(--text-muted)",
             background: "var(--bg2)", border: "1px solid var(--border)",
             borderRadius: 99, padding: "1px 8px",
@@ -254,7 +254,7 @@ export default function ExplainabilityDashboard({ disease, month, simMode, timeS
         />
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "220px 1fr", gap: 16, alignItems: "start" }}>
+      <div className="explain-grid">
 
         {/* Metrics panel */}
         <div style={{

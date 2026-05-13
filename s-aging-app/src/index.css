@@ -5280,3 +5280,21 @@ textarea.profile-input {
     scroll-behavior: auto;
   }
 }
+
+/* ── ExplainabilityDashboard ── */
+.explain-grid {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 16px;
+  align-items: start;
+}
+
+@media (max-width: 600px) {
+  .explain-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .explain-header-badge {
+    display: none;
+  }
+}
