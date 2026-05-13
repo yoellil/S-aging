@@ -6,6 +6,7 @@
  */
 
 const AUTH_URL = import.meta.env.VITE_AUTH_URL || "http://localhost:3001";
+const SIM_URL = import.meta.env.VITE_SIMULATION_URL || "http://localhost:8001";
 
 // ── Simulation ──────────────────────────────────────────────────────────────
 
@@ -18,7 +19,7 @@ const AUTH_URL = import.meta.env.VITE_AUTH_URL || "http://localhost:3001";
 export async function streamSimulation(params, onFrame, onDone, onError) {
   let response;
   try {
-    response = await fetch("/api/simulate", {
+    response = await fetch(`${SIM_URL}/api/simulate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(params),
@@ -65,7 +66,7 @@ export async function streamSimulation(params, onFrame, onDone, onError) {
 /** Quick health check — resolves true if backend is reachable. */
 export async function checkBackend() {
   try {
-    const r = await fetch("/api/health", { method: "GET" });
+    const r = await fetch(`${SIM_URL}/api/health`, { method: "GET" });
     return r.ok;
   } catch {
     return false;
