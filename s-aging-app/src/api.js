@@ -5,7 +5,7 @@
  * NDJSON line (one per simulated month, 0-30).
  */
 
-const AUTH_URL = "http://localhost:3001";
+const AUTH_URL = import.meta.env.VITE_AUTH_URL || "http://localhost:3001";
 
 // ── Simulation ──────────────────────────────────────────────────────────────
 
