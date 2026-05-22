@@ -325,9 +325,17 @@ const FIELD_STEPS_PER_MONTH = 6;
 const FIELD_AGE_ORANGE = FIELD_STEPS_PER_MONTH * 3;  // ~3 months infected
 const FIELD_AGE_RED = FIELD_STEPS_PER_MONTH * 7;    // ~7 months infected
 
-function makeFieldGrid(density) {
-  return Array.from({ length: FIELD_ROWS }, () =>
-    Array.from({ length: FIELD_COLS }, () => ({
+// Each cell represents a 2 m × 2 m planting spot (4 m²).
+// cols = round(√(ha × 5000)), rows = cols / 2, capped at 120 × 60.
+function haToGrid(ha) {
+  const raw = Math.round(Math.sqrt(ha * 5000));
+  const cols = Math.min(120, Math.max(40, raw % 2 === 0 ? raw : raw + 1));
+  return { cols, rows: Math.max(20, Math.round(cols / 2)) };
+}
+
+function makeFieldGrid(density, cols = FIELD_COLS, rows = FIELD_ROWS) {
+  return Array.from({ length: rows }, () =>
+    Array.from({ length: cols }, () => ({
       hasPlant: Math.random() < density,
       state: 0,
       age: 0,
@@ -335,13 +343,13 @@ function makeFieldGrid(density) {
   );
 }
 
-function makeFieldGridCornrow(density) {
+function makeFieldGridCornrow(density, cols = FIELD_COLS, rows = FIELD_ROWS) {
   // Row spacing: wider gaps between rows as density decreases (2–6 rows apart)
   const rowStep = Math.max(2, Math.round((1 - density) * 5 + 2));
   const colStep = 2; // fixed: plants every 2 columns within a row
 
-  return Array.from({ length: FIELD_ROWS }, (_, r) =>
-    Array.from({ length: FIELD_COLS }, (_, c) => {
+  return Array.from({ length: rows }, (_, r) =>
+    Array.from({ length: cols }, (_, c) => {
       if (r % rowStep !== 0) return { hasPlant: false, state: 0, age: 0 };
       // Stagger alternate rows by half a column step for banana plantation geometry
       const stagger = (Math.floor(r / rowStep) % 2 === 1) ? 1 : 0;
@@ -357,7 +365,7 @@ function fieldCellColor(state, age) {
   return "#cc1212";                              // Red    – Highly advanced
 }
 
-function stepFieldGrid(g, disease, env, windAngle, maxRange = 1, durationScale = 1) {
+function stepFieldGrid(g, disease, env, windAngle, maxRange = 1, durationScale = 1, windStrength = 0, cols = FIELD_COLS, rows = FIELD_ROWS) {
   const next = g.map(row => row.map(cell => ({ ...cell })));
 
   // Wind label = origin of wind; spores travel in the opposite direction.
@@ -372,8 +380,8 @@ function stepFieldGrid(g, disease, env, windAngle, maxRange = 1, durationScale =
     })
     : null;
 
-  for (let r = 0; r < FIELD_ROWS; r++) {
-    for (let c = 0; c < FIELD_COLS; c++) {
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
       const cell = g[r][c];
       if (!cell.hasPlant) continue;
       if (cell.state === 1) {
@@ -383,18 +391,30 @@ function stepFieldGrid(g, disease, env, windAngle, maxRange = 1, durationScale =
         if (bsWeights) {
           for (const [dr, dc, w] of bsWeights) {
             const nr = r + dr, nc = c + dc;
-            if (nr >= 0 && nr < FIELD_ROWS && nc >= 0 && nc < FIELD_COLS && g[nr][nc].hasPlant && g[nr][nc].state === 1)
+            if (nr >= 0 && nr < rows && nc >= 0 && nc < cols && g[nr][nc].hasPlant && g[nr][nc].state === 1)
               prob += 0.06 * w * env * durationScale;
           }
-          for (const dist of [2, 3]) {
-            const nr = Math.round(r - dist * wy), nc = Math.round(c - dist * wx);
-            if (nr >= 0 && nr < FIELD_ROWS && nc >= 0 && nc < FIELD_COLS && g[nr][nc].hasPlant && g[nr][nc].state === 1)
-              prob += (0.02 / dist) * env * durationScale;
+          // Wind-driven long-range spread: P ∝ (1/d²)·exp(kW·cosθ), kW = windStrength/25
+          // Reach grows with wind; at 0 mph falls back to minimal near-range only.
+          const kW = windStrength / 25;
+          const windMaxDist = 1 + Math.round(kW * 5);   // 1 cell at 0 mph → 6 at 25 mph
+          for (let d = 2; d <= windMaxDist + 1; d++) {
+            const halfWidth = Math.ceil(d / 3);          // cone widens slightly with distance
+            for (let side = -halfWidth; side <= halfWidth; side++) {
+              // perpendicular direction to wind travel: (–wy, wx) in (row, col)
+              const nr = Math.round(r - d * wy + side * wx);
+              const nc = Math.round(c - d * wx - side * wy);
+              if (nr < 0 || nr >= rows || nc < 0 || nc >= cols) continue;
+              if (!g[nr][nc].hasPlant || g[nr][nc].state !== 1) continue;
+              const dist2 = d * d + side * side;
+              const cosTheta = d / Math.sqrt(dist2);     // = 1 on-axis, < 1 off-axis
+              prob += (0.02 / dist2) * Math.exp(kW * cosTheta) * env * durationScale;
+            }
           }
         } else {
           for (const [dr, dc] of NBRS) {
             const nr = r + dr, nc = c + dc;
-            if (nr >= 0 && nr < FIELD_ROWS && nc >= 0 && nc < FIELD_COLS && g[nr][nc].hasPlant && g[nr][nc].state === 1)
+            if (nr >= 0 && nr < rows && nc >= 0 && nc < cols && g[nr][nc].hasPlant && g[nr][nc].state === 1)
               prob += 0.08 * env * durationScale;
           }
         }
@@ -407,7 +427,7 @@ function stepFieldGrid(g, disease, env, windAngle, maxRange = 1, durationScale =
               const d = Math.max(Math.abs(dr), Math.abs(dc));
               if (d <= 1 || d > maxRange) continue;
               const nr = r + dr, nc = c + dc;
-              if (nr < 0 || nr >= FIELD_ROWS || nc < 0 || nc >= FIELD_COLS) continue;
+              if (nr < 0 || nr >= rows || nc < 0 || nc >= cols) continue;
               if (!g[nr][nc].hasPlant || g[nr][nc].state !== 1) continue;
               const decay = 0.35 / d;
               if (bsWeights) {
@@ -430,7 +450,7 @@ function stepFieldGrid(g, disease, env, windAngle, maxRange = 1, durationScale =
   return next;
 }
 
-function computeFieldSnapshots(seededGrid, disease, envFactor, windAngle, maxRange = 1, temp = 27, months = 30) {
+function computeFieldSnapshots(seededGrid, disease, envFactor, windAngle, maxRange = 1, temp = 27, months = 30, windStrength = 0, cols = FIELD_COLS, rows = FIELD_ROWS) {
   const isFW = disease === "fusarium_wilt";
   const T_MIN = isFW ? 20.0 : 16.6;
   const T_MAX = isFW ? 35.0 : 30.3;
@@ -444,7 +464,7 @@ function computeFieldSnapshots(seededGrid, disease, envFactor, windAngle, maxRan
   let cur = seededGrid;
   for (let m = 1; m <= months; m++) {
     for (let s = 0; s < FIELD_STEPS_PER_MONTH; s++)
-      cur = stepFieldGrid(cur, disease, env, windAngle, maxRange, durationScale);
+      cur = stepFieldGrid(cur, disease, env, windAngle, maxRange, durationScale, windStrength, cols, rows);
     snaps.push(cur);
   }
   return snaps;
@@ -478,6 +498,9 @@ function FieldView({ disease, timeStep, envFactor, temp, months, onStatsUpdate, 
   const monthsRef = useRef(months);
   const densityRef = useRef(0.75);
   const maxRangeRef = useRef(1);
+  const windStrengthRef = useRef(5);
+  const fieldColsRef = useRef(haToGrid(1).cols);
+  const fieldRowsRef = useRef(haToGrid(1).rows);
   const baseGridRef = useRef(null);
   const seedsRef = useRef([]);    // [{cx,cy}, …] — accumulates clicks
   const windAngle = useRef(0);     // radians; 0 = East
@@ -488,6 +511,8 @@ function FieldView({ disease, timeStep, envFactor, temp, months, onStatsUpdate, 
   const [windDir, setWindDir] = useState("E");
   const [computing, setComputing] = useState(false);
   const [showWind, setShowWind] = useState(false);
+  const [windStrength, setWindStrength] = useState(5);
+  const [landHa, setLandHa] = useState(1);
 
   useEffect(() => { diseaseRef.current = disease; }, [disease]);
   useEffect(() => { envRef.current = envFactor; }, [envFactor]);
@@ -507,7 +532,7 @@ function FieldView({ disease, timeStep, envFactor, temp, months, onStatsUpdate, 
         const hit = seeds.some(({ cx, cy }) => Math.abs(r - cy) <= 2 && Math.abs(c - cx) <= 2);
         return hit && cell.hasPlant ? { ...cell, state: 1, age: 0 } : { ...cell };
       }));
-      const snaps = computeFieldSnapshots(seeded, diseaseRef.current, envRef.current, angle, maxRangeRef.current, tempRef.current, monthsRef.current);
+      const snaps = computeFieldSnapshots(seeded, diseaseRef.current, envRef.current, angle, maxRangeRef.current, tempRef.current, monthsRef.current, windStrengthRef.current, fieldColsRef.current, fieldRowsRef.current);
       snapsRef.current = snaps;
       displayRef.current = snaps[Math.min(timeStepRef.current, snaps.length - 1)];
       onStatsUpdate?.(snaps.map(fieldSnapshotStats));
@@ -516,7 +541,9 @@ function FieldView({ disease, timeStep, envFactor, temp, months, onStatsUpdate, 
   }, []);
 
   const doReset = useCallback((den, pat) => {
-    const base = pat === "cornrow" ? makeFieldGridCornrow(den) : makeFieldGrid(den);
+    const base = pat === "cornrow"
+      ? makeFieldGridCornrow(den, fieldColsRef.current, fieldRowsRef.current)
+      : makeFieldGrid(den, fieldColsRef.current, fieldRowsRef.current);
     baseGridRef.current = base;
     seedsRef.current = [];
     windAngle.current = 0;
@@ -539,8 +566,8 @@ function FieldView({ disease, timeStep, envFactor, temp, months, onStatsUpdate, 
     const py = (e.clientY - rect.top) / rect.height;
     return {
       px, py,
-      cx: Math.min(FIELD_COLS - 1, Math.max(0, Math.floor(px * FIELD_COLS))),
-      cy: Math.min(FIELD_ROWS - 1, Math.max(0, Math.floor(py * FIELD_ROWS))),
+      cx: Math.min(fieldColsRef.current - 1, Math.max(0, Math.floor(px * fieldColsRef.current))),
+      cy: Math.min(fieldRowsRef.current - 1, Math.max(0, Math.floor(py * fieldRowsRef.current))),
     };
   };
 
@@ -566,21 +593,53 @@ function FieldView({ disease, timeStep, envFactor, temp, months, onStatsUpdate, 
     const canvas = ref.current; if (!canvas) return;
     const ctx = canvas.getContext("2d");
     const W = canvas.width, H = canvas.height;
-    const cW = W / FIELD_COLS, cH = H / FIELD_ROWS;
-    const RAD = Math.min(cW, cH) * 0.40;
 
     const loop = () => {
       const g = displayRef.current;
-      ctx.fillStyle = "#0d1a08"; ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = "#0c1a08"; ctx.fillRect(0, 0, W, H);
       if (g) {
-        for (let r = 0; r < FIELD_ROWS; r++) {
-          for (let c = 0; c < FIELD_COLS; c++) {
+        const gRows = g.length, gCols = g[0]?.length ?? 0;
+        if (!gCols) { animRef.current = requestAnimationFrame(loop); return; }
+        const cW = W / gCols, cH = H / gRows;
+        const base = Math.min(cW, cH);
+
+        // Pass 1 — glow halos for infected cells (drawn under main dots so halos don't cover neighbours)
+        for (let r = 0; r < gRows; r++) {
+          for (let c = 0; c < gCols; c++) {
+            const cell = g[r][c];
+            if (!cell.hasPlant || cell.state !== 1) continue;
+            const x = (c + 0.5) * cW, y = (r + 0.5) * cH;
+            if (cell.age >= FIELD_AGE_RED) {
+              ctx.fillStyle = "rgba(210,24,24,0.26)";
+              ctx.beginPath(); ctx.arc(x, y, base * 0.90, 0, Math.PI * 2); ctx.fill();
+            } else if (cell.age >= FIELD_AGE_ORANGE) {
+              ctx.fillStyle = "rgba(238,108,20,0.22)";
+              ctx.beginPath(); ctx.arc(x, y, base * 0.80, 0, Math.PI * 2); ctx.fill();
+            } else {
+              ctx.fillStyle = "rgba(216,190,0,0.18)";
+              ctx.beginPath(); ctx.arc(x, y, base * 0.70, 0, Math.PI * 2); ctx.fill();
+            }
+          }
+        }
+
+        // Pass 2 — main cell dots, sized and coloured by stage
+        for (let r = 0; r < gRows; r++) {
+          for (let c = 0; c < gCols; c++) {
             const cell = g[r][c];
             if (!cell.hasPlant) continue;
-            ctx.beginPath();
-            ctx.arc((c + 0.5) * cW, (r + 0.5) * cH, RAD, 0, Math.PI * 2);
-            ctx.fillStyle = fieldCellColor(cell.state, cell.age);
-            ctx.fill();
+            const x = (c + 0.5) * cW, y = (r + 0.5) * cH;
+            let radius, color;
+            if (cell.state === 0) {
+              radius = base * 0.38; color = "#52b720";
+            } else if (cell.age < FIELD_AGE_ORANGE) {
+              radius = base * 0.43; color = "#dcc800";
+            } else if (cell.age < FIELD_AGE_RED) {
+              radius = base * 0.47; color = "#f07020";
+            } else {
+              radius = base * 0.51; color = "#d41414";
+            }
+            ctx.fillStyle = color;
+            ctx.beginPath(); ctx.arc(x, y, radius, 0, Math.PI * 2); ctx.fill();
           }
         }
       }
@@ -640,6 +699,26 @@ function FieldView({ disease, timeStep, envFactor, temp, months, onStatsUpdate, 
           <span style={{ minWidth: 30, textAlign: "right" }}>{Math.round(density * 100)}%</span>
         </div>
 
+        <div style={{ width: 1, height: 18, background: "var(--color-border-secondary)", flexShrink: 0 }} />
+
+        {/* Land size slider */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flex: "1 1 160px", minWidth: 0 }}>
+          <span style={{ whiteSpace: "nowrap" }}>Land size</span>
+          <input
+            type="range" min={0.5} max={5} step={0.5} value={landHa}
+            onChange={e => {
+              const ha = +e.target.value;
+              const { cols, rows } = haToGrid(ha);
+              fieldColsRef.current = cols;
+              fieldRowsRef.current = rows;
+              setLandHa(ha);
+              doReset(density, pattern);
+            }}
+            style={{ flex: 1, minWidth: 60, accentColor: "var(--green)" }}
+          />
+          <span style={{ minWidth: 46, textAlign: "right" }}>{landHa} ha</span>
+        </div>
+
         {/* Play, Reset, Re-run */}
         <div style={{ display: "flex", gap: 5, alignItems: "center", flexShrink: 0 }}>
           <button onClick={onPlayPause} className="play-btn" style={{ fontSize: 11, padding: "5px 11px" }}>
@@ -671,7 +750,7 @@ function FieldView({ disease, timeStep, envFactor, temp, months, onStatsUpdate, 
         padding: "7px 14px", color: "var(--text-muted)",
         background: "var(--bg2)", borderBottom: "1px solid var(--color-border-secondary)",
       }}>
-        {[["#4a9020", "Healthy"], ["#d4c520", "Early infection"], ["#f07818", "Advanced"], ["#cc1212", "Highly advanced"]].map(([color, label]) => (
+        {[["#52b720", "Healthy"], ["#dcc800", "Early infection"], ["#f07020", "Advanced"], ["#d41414", "Highly advanced"]].map(([color, label]) => (
           <div key={label} style={{ display: "flex", alignItems: "center", gap: 5 }}>
             <div style={{ width: 9, height: 9, borderRadius: "50%", background: color, flexShrink: 0 }} />
             <span style={{ fontSize: 11 }}>{label}</span>
@@ -713,7 +792,7 @@ function FieldView({ disease, timeStep, envFactor, temp, months, onStatsUpdate, 
               borderLeft: "1px solid rgba(255,255,255,0.2)",
               opacity: 0.9, letterSpacing: "0.03em",
             }}>
-              {{ "N": "↑", "NE": "↗", "E": "→", "SE": "↘", "S": "↓", "SW": "↙", "W": "←", "NW": "↖" }[windDir]} {windDir}
+              {{ "N": "↑", "NE": "↗", "E": "→", "SE": "↘", "S": "↓", "SW": "↙", "W": "←", "NW": "↖" }[windDir]} {windDir} · {windStrength} mph
             </span>
           </button>
         )}
@@ -758,6 +837,29 @@ function FieldView({ disease, timeStep, envFactor, temp, months, onStatsUpdate, 
                   }}>{label}</button>
                 );
               })}
+            </div>
+
+            {/* Wind strength slider */}
+            <div style={{ marginTop: 8, borderTop: "1px solid rgba(255,255,255,0.1)", paddingTop: 8, width: 140 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, color: "rgba(255,255,255,0.65)", fontSize: 10 }}>
+                <span>Wind strength</span>
+                <span style={{ fontWeight: 600, color: "#a8d870" }}>{windStrength} mph</span>
+              </div>
+              <input
+                type="range" min={0} max={25} step={1} value={windStrength}
+                onChange={e => {
+                  const v = +e.target.value;
+                  windStrengthRef.current = v;
+                  setWindStrength(v);
+                  if (baseGridRef.current && seedsRef.current.length > 0)
+                    rebuild(baseGridRef.current, seedsRef.current, windAngle.current);
+                }}
+                style={{ width: "100%", accentColor: "#a8d870", cursor: "pointer" }}
+              />
+              <div style={{ display: "flex", justifyContent: "space-between", color: "rgba(255,255,255,0.3)", fontSize: 9, marginTop: 2 }}>
+                <span>Calm (0)</span>
+                <span>Fresh breeze (25)</span>
+              </div>
             </div>
           </div>
         )}
