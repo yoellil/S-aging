@@ -1,5 +1,5 @@
 {
   "rewrites": [
-    { "source": "/api/:path*", "destination": "https://s-aging.onrender.com/api/:path*" }
+    { "source": "/api/:path*", "destination": "https://pelt-uptown-tacky.ngrok-free.dev/api/:path*" }
   ]
 }
