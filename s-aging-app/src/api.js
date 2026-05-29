@@ -16,15 +16,17 @@ const SIM_URL = import.meta.env.VITE_SIMULATION_URL || "http://localhost:8001";
  * @param {function} [onDone]         Called when stream completes
  * @param {function} [onError]        Called with Error on failure
  */
-export async function streamSimulation(params, onFrame, onDone, onError) {
+export async function streamSimulation(params, onFrame, onDone, onError, signal) {
   let response;
   try {
     response = await fetch(`${SIM_URL}/api/simulate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(params),
+      signal,
     });
   } catch (networkErr) {
+    if (networkErr.name === "AbortError") return;
     onError?.(new Error("Cannot reach simulation backend — is it running? " + networkErr.message));
     return;
   }
@@ -59,6 +61,7 @@ export async function streamSimulation(params, onFrame, onDone, onError) {
     }
     onDone?.();
   } catch (err) {
+    if (err.name === "AbortError") return;
     onError?.(err);
   }
 }

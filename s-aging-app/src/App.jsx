@@ -702,7 +702,7 @@ function FieldView({ disease, timeStep, envFactor, temp, months, onStatsUpdate, 
         <div style={{ width: 1, height: 18, background: "var(--color-border-secondary)", flexShrink: 0 }} />
 
         {/* Land size slider */}
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flex: "1 1 160px", minWidth: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flex: "1 1 210px", minWidth: 210 }}>
           <span style={{ whiteSpace: "nowrap" }}>Land size</span>
           <input
             type="range" min={0.5} max={5} step={0.5} value={landHa}
@@ -716,7 +716,7 @@ function FieldView({ disease, timeStep, envFactor, temp, months, onStatsUpdate, 
             }}
             style={{ flex: 1, minWidth: 60, accentColor: "var(--green)" }}
           />
-          <span style={{ minWidth: 46, textAlign: "right" }}>{landHa} ha</span>
+          <span style={{ minWidth: 52, textAlign: "right", whiteSpace: "nowrap" }}>{landHa} ha</span>
         </div>
 
         {/* Play, Reset, Re-run */}
@@ -1848,6 +1848,7 @@ function SimulationPage({ config, devMode }) {
 
   // ── Stream simulation frames from FastAPI backend on mount ────────────────
   useEffect(() => {
+    const controller = new AbortController();
     cancelledRef.current = false;
     hasSavedRef.current = false;
     framesRef.current = [];
@@ -1884,10 +1885,15 @@ function SimulationPage({ config, devMode }) {
       },
       (err) => {
         if (!cancelledRef.current) { setSimState("error"); setErrorMsg(err.message); }
-      }
+      },
+      controller.signal
     );
 
-    return () => { cancelledRef.current = true; clearInterval(playRef.current); };
+    return () => {
+      cancelledRef.current = true;
+      controller.abort();
+      clearInterval(playRef.current);
+    };
   }, []); // run once on mount
 
   // ── Play-through timer (only after all frames loaded) ─────────────────────

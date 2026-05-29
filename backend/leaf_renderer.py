@@ -10,9 +10,15 @@ a grid of cell colours.
 """
 
 import io
+import threading
 import numpy as np
 import pyvista as pv
+import vtk
+import vtk.util.numpy_support as vtk_np
 from PIL import Image, ImageFilter
+
+# VTK offscreen rendering is not thread-safe on Windows — serialize Plotter calls
+_vtk_render_lock = threading.Lock()
 
 try:
     from scipy.ndimage import gaussian_filter1d as _gf1d
@@ -349,46 +355,53 @@ class LeafRenderer:
         blended = (1.0 - ov_a) * base + ov_a * ov_rgb
         rgb = np.clip(blended, 0, 255).astype(np.uint8)
 
-        # 2. Build PyVista texture from numpy RGB
-        texture = pv.numpy_to_texture(rgb)
+        # 2. Build VTK texture directly from numpy RGB (no temp file)
+        h, w = rgb.shape[:2]
+        img_data = vtk.vtkImageData()
+        img_data.SetDimensions(w, h, 1)
+        img_data.AllocateScalars(vtk.VTK_UNSIGNED_CHAR, 3)
+        flat = vtk_np.numpy_to_vtk(np.flipud(rgb).ravel(), deep=True, array_type=vtk.VTK_UNSIGNED_CHAR)
+        flat.SetNumberOfComponents(3)
+        img_data.GetPointData().SetScalars(flat)
+        texture = vtk.vtkTexture()
+        texture.SetInputDataObject(img_data)
+        texture.Update()
 
-        # 3. Render on 3-D mesh
-        pl = pv.Plotter(off_screen=True, window_size=[width, height])
-        pl.set_background(_BG_HEX)
+        # 3. Render on 3-D mesh (serialized — VTK offscreen not thread-safe on Windows)
+        with _vtk_render_lock:
+            pl = pv.Plotter(off_screen=True, window_size=[width, height])
+            pl.set_background(_BG_HEX)
 
-        pl.add_mesh(
-            self.mesh,
-            texture=texture,
-            smooth_shading=True,
-            show_edges=False,
-            ambient=0.80,
-            diffuse=0.30,
-            specular=0.06,
-        )
+            pl.add_mesh(
+                self.mesh,
+                texture=texture,
+                smooth_shading=True,
+                show_edges=False,
+                ambient=0.80,
+                diffuse=0.30,
+                specular=0.06,
+            )
 
-        # Orthographic-ish camera looking down on the leaf surface.
-        # Leaf X spans ±3.4; window ratio 900/320 ≈ 2.81 → parallel_scale
-        # must satisfy 3.4 / 2.81 ≤ parallel_scale → use 1.25 for margin.
-        pl.camera.enable_parallel_projection()
-        pl.camera_position = [
-            (0.0, -0.8, 8.0),     # slightly in front + above for subtle 3-D
-            (0.0,  0.0, 0.0),
-            (0.0,  1.0, 0.1),     # X is screen-horizontal (long axis)
-        ]
-        pl.camera.parallel_scale = 1.30
+            pl.camera.enable_parallel_projection()
+            pl.camera_position = [
+                (0.0, -0.8, 8.0),
+                (0.0,  0.0, 0.0),
+                (0.0,  1.0, 0.1),
+            ]
+            pl.camera.parallel_scale = 1.30
 
-        pl.remove_all_lights()
-        pl.add_light(pv.Light(
-            position=(0, 0, 12), focal_point=(0, 0, 0),
-            intensity=0.9, light_type="scene light",
-        ))
-        pl.add_light(pv.Light(
-            position=(4, -3, 8), focal_point=(0, 0, 0),
-            intensity=0.35, light_type="scene light",
-        ))
+            pl.remove_all_lights()
+            pl.add_light(pv.Light(
+                position=(0, 0, 12), focal_point=(0, 0, 0),
+                intensity=0.9, light_type="scene light",
+            ))
+            pl.add_light(pv.Light(
+                position=(4, -3, 8), focal_point=(0, 0, 0),
+                intensity=0.35, light_type="scene light",
+            ))
 
-        img_out = pl.screenshot(return_img=True)
-        pl.close()
+            img_out = pl.screenshot(return_img=True)
+            pl.close()
 
         buf = io.BytesIO()
         Image.fromarray(img_out).save(

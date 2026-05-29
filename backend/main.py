@@ -8,6 +8,9 @@ Start with:  uvicorn main:app --reload --host 0.0.0.0 --port 8001
 import io
 import json
 import base64
+import queue
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional, List
 
 import numpy as np
@@ -32,15 +35,23 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Renderer is expensive to initialise (builds the 3-D mesh once)
-_renderer: Optional[LeafRenderer] = None
+# ── Renderer pool (one instance per worker thread, shared across requests) ────
+
+_RENDER_WORKERS = 10
+_renderer_queue: Optional[queue.Queue] = None
+_renderer_init_lock = threading.Lock()
 
 
-def get_renderer() -> LeafRenderer:
-    global _renderer
-    if _renderer is None:
-        _renderer = LeafRenderer()
-    return _renderer
+def _get_renderer_queue() -> queue.Queue:
+    global _renderer_queue
+    if _renderer_queue is None:
+        with _renderer_init_lock:
+            if _renderer_queue is None:
+                q: queue.Queue = queue.Queue()
+                for _ in range(_RENDER_WORKERS):
+                    q.put(LeafRenderer())
+                _renderer_queue = q
+    return _renderer_queue
 
 
 # ── Request schema ────────────────────────────────────────────────────────────
@@ -64,8 +75,8 @@ class SimRequest(BaseModel):
     detections: Optional[List[DetectionItem]] = None
     imgWidth: Optional[int] = None
     imgHeight: Optional[int] = None
-    imageData: Optional[str] = None   # base64-encoded leaf photo from frontend
-    maskGrid: Optional[List[int]] = None  # YOLO seg mask as flat 160×100 array (0/1/2)
+    imageData: Optional[str] = None
+    maskGrid: Optional[List[int]] = None
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -81,19 +92,20 @@ async def simulate(req: SimRequest):
     Run the full SCA simulation and stream 31 NDJSON frames (one per month).
     Each line:
       { step, month, image: "<base64-JPEG>", stats: {...}, env: {...} }
+
+    Strategy: collect all SCA steps first (fast, pure numpy), then render
+    all frames in parallel using a pool of LeafRenderer instances, then
+    stream results in order.
     """
     engine = SCAEngine()
-    renderer = get_renderer()
-
     dets = (
         [d.model_dump() for d in req.detections]
         if req.detections else None
     )
 
-    # imageData is accepted but no longer used — the leaf is now rendered
-    # synthetically for a clean, recognizable banana-leaf appearance.
     def generate():
-        for frame in engine.run(
+        # Step 1: run all SCA steps eagerly (fast — pure numpy, ~1-2s)
+        frames = list(engine.run(
             disease=req.disease,
             temp=req.temp,
             rh=req.rh,
@@ -103,28 +115,63 @@ async def simulate(req: SimRequest):
             img_w=req.imgWidth,
             img_h=req.imgHeight,
             mask_grid=req.maskGrid,
-        ):
-            img_bytes = renderer.render_frame(
-                frame["grid"],
-                frame["intensity"],
-                req.disease,
-            )
-            img_b64 = base64.b64encode(img_bytes).decode()
+        ))
 
-            grid_u8       = frame["grid"].astype(np.uint8)
-            intensity_u8  = (frame["intensity"] * 255).clip(0, 255).astype(np.uint8)
-            gridData_b64      = base64.b64encode(grid_u8.ravel().tobytes()).decode()
-            intensityData_b64 = base64.b64encode(intensity_u8.ravel().tobytes()).decode()
+        # Step 2: render all frames in parallel using the renderer pool
+        rq = _get_renderer_queue()
+        disease = req.disease
 
-            payload = {
-                "step":          frame["step"],
-                "month":         frame["month"],
-                "image":         img_b64,
-                "gridData":      gridData_b64,
-                "intensityData": intensityData_b64,
-                "stats":         frame["stats"],
-                "env":           frame["env"],
-            }
-            yield json.dumps(payload) + "\n"
+        def render_one(frame):
+            renderer = rq.get()
+            try:
+                img_bytes = renderer.render_frame(
+                    frame["grid"], frame["intensity"], disease
+                )
+                return frame, img_bytes
+            except Exception as e:
+                print(f"[render_one] frame {frame.get('step')} failed: {e}")
+                return None
+            finally:
+                rq.put(renderer)
+
+        # Step 3: stream frames in order as each finishes rendering
+        # pending holds completed-but-not-yet-emitted frames keyed by index
+        pending = {}
+        next_to_emit = 0
+
+        with ThreadPoolExecutor(max_workers=_RENDER_WORKERS) as pool:
+            futures = {pool.submit(render_one, f): i for i, f in enumerate(frames)}
+            for fut in as_completed(futures):
+                idx = futures[fut]
+                try:
+                    pending[idx] = fut.result()
+                except Exception as e:
+                    print(f"[simulate] future {idx} raised: {e}")
+                    pending[idx] = None
+
+                # emit any consecutive frames we now have in order
+                while next_to_emit in pending:
+                    result = pending.pop(next_to_emit)
+                    next_to_emit += 1
+
+                    if result is None:
+                        continue  # skip frames that failed to render
+
+                    frame, img_bytes = result
+                    img_b64 = base64.b64encode(img_bytes).decode()
+                    grid_u8      = frame["grid"].astype(np.uint8)
+                    intensity_u8 = (frame["intensity"] * 255).clip(0, 255).astype(np.uint8)
+                    gridData_b64      = base64.b64encode(grid_u8.ravel().tobytes()).decode()
+                    intensityData_b64 = base64.b64encode(intensity_u8.ravel().tobytes()).decode()
+
+                    yield json.dumps({
+                        "step":          frame["step"],
+                        "month":         frame["month"],
+                        "image":         img_b64,
+                        "gridData":      gridData_b64,
+                        "intensityData": intensityData_b64,
+                        "stats":         frame["stats"],
+                        "env":           frame["env"],
+                    }) + "\n"
 
     return StreamingResponse(generate(), media_type="application/x-ndjson")

@@ -152,19 +152,26 @@ class SCAEngine:
         #      the characteristic yellow-green band at both leaf edges.
         # Ref: MDPI Agronomy 2021 (Venezuelan FW); frontiersin.org/fpls/2019/1395
         if is_fw:
-            # Phase 1A – seed the full detected mask at very low intensity so
-            # the photo's disease regions appear on the 3D leaf and fade in
-            # gradually (alpha = 0.18 + iv*0.72 keeps them faint at start).
+            # Phase 1A – seed from detected mask at realistic intensity so the
+            # simulation starts from the actual observed disease stage.
             if mask_grid is not None and len(mask_grid) == self.ROWS * self.COLS:
                 mask_arr = np.array(mask_grid, dtype=np.uint8).reshape(self.ROWS, self.COLS)
                 mask_arr[~self.leaf_mask] = 0
-                infected = mask_arr >= 1
+                infected = mask_arr == 1
+                necrotic = mask_arr == 2
                 n_inf = int(np.sum(infected))
-                if n_inf > 0:
+                n_nec = int(np.sum(necrotic))
+                if n_inf + n_nec > 0:
                     grid[infected] = 1
-                    intensity[infected] = (
-                        np.random.random(n_inf).astype(np.float32) * 0.04 + 0.01
-                    )
+                    if n_inf > 0:
+                        intensity[infected] = (
+                            np.random.random(n_inf).astype(np.float32) * 0.30 + 0.35
+                        )
+                    grid[necrotic] = 2
+                    if n_nec > 0:
+                        intensity[necrotic] = (
+                            np.random.random(n_nec).astype(np.float32) * 0.20 + 0.65
+                        )
                     return
 
             # Fallback – seed a single small cluster at one random point on

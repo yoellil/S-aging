@@ -65,8 +65,39 @@ export default function AuthPage({ onAuth, initialNotice }) {
   return (
     <div style={{
       minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center",
-      background: "var(--bg, #F8F7F4)", padding: "24px 16px",
+      padding: "24px 16px", position: "relative", overflow: "hidden",
+      backgroundColor: "#1a2e0a",
     }}>
+      <style>{`
+        @keyframes scrollBanana {
+          0%   { background-position: 0 0; }
+          100% { background-position: 160px 160px; }
+        }
+      `}</style>
+      {/* Scrolling banana pixel background */}
+      <div style={{
+        position: "absolute", inset: 0, zIndex: 0,
+        backgroundImage: "url('/banana-pix.png')",
+        backgroundRepeat: "repeat",
+        backgroundSize: "160px 160px",
+        opacity: 0.18,
+        animation: "scrollBanana 12s linear infinite",
+      }} />
+      {/* Dark overlay for readability */}
+      <div style={{
+        position: "absolute", inset: 0, zIndex: 1,
+        background: "linear-gradient(135deg, rgba(10,22,4,0.7) 0%, rgba(26,46,10,0.5) 100%)",
+      }} />
+      <div style={{ position: "relative", zIndex: 2, width: "100%", maxWidth: 860, display: "flex", alignItems: "center", justifyContent: "center", gap: 48 }}>
+        {/* Logo on the left */}
+        <div style={{ flex: "0 0 auto", display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}>
+          <img src="/s-aging_logo.png" alt="S-Aging" style={{ width: 200, height: 200, objectFit: "contain", filter: "drop-shadow(0 4px 24px rgba(0,0,0,0.4))" }} />
+          <div style={{ color: "#fff", fontWeight: 700, fontSize: 22, letterSpacing: "-0.5px", textShadow: "0 2px 8px rgba(0,0,0,0.5)" }}>S-Aging</div>
+          <div style={{ color: "rgba(255,255,255,0.6)", fontSize: 12, textAlign: "center", textShadow: "0 1px 4px rgba(0,0,0,0.5)" }}>FEU Institute of Technology</div>
+          <div style={{ color: "rgba(255,255,255,0.45)", fontSize: 11, textAlign: "center", textShadow: "0 1px 4px rgba(0,0,0,0.5)" }}>by Nautilizers · 2026</div>
+        </div>
+        {/* Divider */}
+        <div style={{ width: 1, height: 280, background: "rgba(255,255,255,0.15)", flexShrink: 0 }} />
       <motion.div
         initial={{ opacity: 0, y: 24 }}
         animate={{ opacity: 1, y: 0 }}
@@ -85,14 +116,12 @@ export default function AuthPage({ onAuth, initialNotice }) {
           display: "flex", alignItems: "center", gap: 12,
         }}>
           <div style={{
-            width: 36, height: 36, borderRadius: 8,
-            background: "rgba(255,255,255,0.15)",
+            width: 40, height: 40, borderRadius: 8,
+            background: "#fff",
             display: "flex", alignItems: "center", justifyContent: "center",
+            padding: 3, flexShrink: 0,
           }}>
-            <svg viewBox="0 0 20 20" fill="none" stroke="#fff" strokeWidth="1.8" width={20} height={20}>
-              <path d="M10 3C6 3 4 7 4 10c0 4 3 7 6 7s6-3 6-7c0-3-2-7-6-7z" />
-              <path d="M10 3v14M4 10h12" />
-            </svg>
+            <img src="/s-aging_logo.png" alt="S-Aging" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
           </div>
           <div>
             <div style={{ color: "#fff", fontWeight: 700, fontSize: 18, letterSpacing: "-0.3px" }}>S-Aging</div>
@@ -197,6 +226,7 @@ export default function AuthPage({ onAuth, initialNotice }) {
           </div>
         </div>
       </motion.div>
+      </div>
     </div>
   );
 }
