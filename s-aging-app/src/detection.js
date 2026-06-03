@@ -12,11 +12,6 @@ import * as ort from 'onnxruntime-web';
 
 // Set to 1 to avoid SharedArrayBuffer / COOP-COEP requirement in older browsers
 ort.env.wasm.numThreads = 1;
-// ORT 1.20+ changed WASM file resolution — point explicitly to CDN so the correct
-// simd-threaded binary is always found (avoids "protobuf parsing failed" on large models)
-ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.24.3/dist/';
-// Disable the worker proxy — the 90 MB model can exhaust heap in a worker thread
-ort.env.wasm.proxy = false;
 
 // Class names in training order (alphabetical — matches ultralytics default)
 export const CLASS_NAMES = ['Black_Sigatoka', 'Fusarium_Wilt', 'Healthy'];
