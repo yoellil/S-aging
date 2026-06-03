@@ -8,7 +8,6 @@ import {
   Fingerprint, Leaf, FlaskConical, BookOpen, Users, BarChart3,
   CheckCircle2, Image as ImageIcon, Maximize2, Sun, Menu,
   LoaderCircle as Loader, ExternalLink,
-  RotateCw, RotateCcw, FlipHorizontal, FlipVertical,
 } from "lucide-react";
 import Antigravity from "./Antigravity";
 import CurvedLoop from "./CurvedLoop";
@@ -1256,9 +1255,6 @@ function UploadPage({ onNavigate, setSimConfig, devMode }) {
   const [maskGrid, setMaskGrid] = useState(null);       // 160×100 flat array from YOLO seg masks
   const [detectionError, setDetectionError] = useState(null);
   const [maskMode, setMaskMode] = useState("combined"); // "combined" | "yolo" | "colorseg"
-  const [imgRotation, setImgRotation] = useState(0);
-  const [imgFlipH, setImgFlipH] = useState(false);
-  const [imgFlipV, setImgFlipV] = useState(false);
   const fileInputRef = useRef(null);
   const imgRef = useRef(null);
 
@@ -1329,12 +1325,7 @@ function UploadPage({ onNavigate, setSimConfig, devMode }) {
       return;
     }
     const reader = new FileReader();
-    reader.onload = (e) => {
-      setUploadedImage({ url: e.target.result, name: file.name });
-      setImgRotation(0);
-      setImgFlipH(false);
-      setImgFlipV(false);
-    };
+    reader.onload = (e) => setUploadedImage({ url: e.target.result, name: file.name });
     reader.readAsDataURL(file);
   }, []);
 
@@ -1427,40 +1418,16 @@ function UploadPage({ onNavigate, setSimConfig, devMode }) {
             <div className="upload-formats">Supports JPG, PNG, WEBP · Max 10MB</div>
           </div>
         ) : (
-          <>
-            <div className="upload-preview">
-              <img
-                ref={imgRef}
-                src={uploadedImage.url}
-                alt={uploadedImage.name}
-                style={{
-                  transform: `rotate(${imgRotation}deg) scaleX(${imgFlipH ? -1 : 1}) scaleY(${imgFlipV ? -1 : 1})`,
-                  transition: "transform 0.2s ease",
-                }}
-              />
-              <button
-                className="upload-preview-remove"
-                onClick={() => { setUploadedImage(null); setDetections(null); setMaskGrid(null); setImgRotation(0); setImgFlipH(false); setImgFlipV(false); }}
-                title="Remove image"
-              >
-                <X size={14} />
-              </button>
-            </div>
-            <div className="img-transform-bar">
-              <button className="img-transform-btn" onClick={() => setImgRotation(r => (r - 90 + 360) % 360)} title="Rotate left 90°">
-                <RotateCcw size={14} /><span>Rotate left</span>
-              </button>
-              <button className="img-transform-btn" onClick={() => setImgRotation(r => (r + 90) % 360)} title="Rotate right 90°">
-                <RotateCw size={14} /><span>Rotate right</span>
-              </button>
-              <button className={`img-transform-btn${imgFlipH ? " active" : ""}`} onClick={() => setImgFlipH(v => !v)} title="Flip horizontal">
-                <FlipHorizontal size={14} /><span>Flip H</span>
-              </button>
-              <button className={`img-transform-btn${imgFlipV ? " active" : ""}`} onClick={() => setImgFlipV(v => !v)} title="Flip vertical">
-                <FlipVertical size={14} /><span>Flip V</span>
-              </button>
-            </div>
-          </>
+          <div className="upload-preview">
+            <img ref={imgRef} src={uploadedImage.url} alt={uploadedImage.name} />
+            <button
+              className="upload-preview-remove"
+              onClick={() => { setUploadedImage(null); setDetections(null); setMaskGrid(null); }}
+              title="Remove image"
+            >
+              <X size={14} />
+            </button>
+          </div>
         )}
 
         {/* ── YOLOv11 Detection result panel ── */}
