@@ -1242,7 +1242,7 @@ function HomePage({ onNavigate, reduceMotion }) {
 // ══════════════════════════════════════════════════════════════════════════════
 //  UPLOAD PAGE
 // ══════════════════════════════════════════════════════════════════════════════
-function UploadPage({ onNavigate, setSimConfig, devMode }) {
+function UploadPage({ onNavigate, setSimConfig, devMode, modelReady }) {
   const [selected, setSelected] = useState("black_sigatoka");
   const [temp, setTemp] = useState(26);
   const [rh, setRh] = useState(85);
@@ -1402,6 +1402,19 @@ function UploadPage({ onNavigate, setSimConfig, devMode }) {
             ))}
           </div>
         </div>
+
+        {/* Model loading banner */}
+        {!modelReady && (
+          <div style={{
+            display: "flex", alignItems: "center", gap: 8, marginBottom: 12,
+            padding: "9px 14px", borderRadius: "var(--radius-sm)",
+            background: "#FAEEDA", border: "1px solid #FAC775",
+            fontSize: 13, color: "#854F0B",
+          }}>
+            <LoaderCircle size={14} style={{ animation: "spin 1s linear infinite", flexShrink: 0 }} />
+            AI model loading in background — first detection will start once ready.
+          </div>
+        )}
 
         {/* Upload zone */}
         {!uploadedImage ? (
@@ -2640,6 +2653,7 @@ export default function SAgingApp() {
   const [theme, setTheme] = useState(() => localStorage.getItem("saging-theme") || "light");
   const [reduceMotion, setReduceMotion] = useState(() => localStorage.getItem("saging-reduce-motion") === "true");
   const [devMode, setDevMode] = useState(false);
+  const [modelReady, setModelReady] = useState(false);
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
@@ -2690,7 +2704,9 @@ export default function SAgingApp() {
   }, []);
 
   // Warm up ONNX session as soon as the app loads
-  useEffect(() => { warmupSession(); }, []);
+  useEffect(() => {
+    warmupSession().then(() => setModelReady(true)).catch(() => setModelReady(true));
+  }, []);
 
   // Scroll to top on navigation
   const navigate = useCallback((p) => {
@@ -2830,7 +2846,7 @@ export default function SAgingApp() {
       )}
 
       {page === "home" && <HomePage onNavigate={navigate} reduceMotion={reduceMotion} />}
-      {page === "upload" && <UploadPage onNavigate={navigate} setSimConfig={setSimConfig} devMode={devMode} />}
+      {page === "upload" && <UploadPage onNavigate={navigate} setSimConfig={setSimConfig} devMode={devMode} modelReady={modelReady} />}
       {page === "simulation" && <SimulationPage config={simConfig} devMode={devMode} />}
       {page === "about" && <AboutPage setDevMode={setDevMode} />}
       {page === "profile" && <ProfilePage auth={auth} onLogout={handleLogout} onNavigate={navigate} setSimConfig={setSimConfig} theme={theme} setTheme={setTheme} reduceMotion={reduceMotion} setReduceMotion={setReduceMotion} devMode={devMode} setDevMode={setDevMode} />}

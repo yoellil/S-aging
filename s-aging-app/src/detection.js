@@ -47,7 +47,7 @@ async function _loadSession() {
   const buffer = await res.arrayBuffer();
   return ort.InferenceSession.create(buffer, {
     executionProviders: ['wasm'],
-    graphOptimizationLevel: 'all',
+    graphOptimizationLevel: 'basic',
   });
 }
 
@@ -463,5 +463,5 @@ export function combinedMask(yoloMask, imgEl) {
  * Silently fails if the model is unavailable.
  */
 export function warmupSession() {
-  getSession().catch(() => { });
+  return getSession().catch(() => {});
 }
