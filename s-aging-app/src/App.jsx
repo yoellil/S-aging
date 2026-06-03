@@ -1257,6 +1257,7 @@ function UploadPage({ onNavigate, setSimConfig, devMode }) {
   const [maskMode, setMaskMode] = useState("combined"); // "combined" | "yolo" | "colorseg"
   const fileInputRef = useRef(null);
   const imgRef = useRef(null);
+  const detectingRef = useRef(false);
 
   const envEffect = () => {
     const isFW = selected === "fusarium_wilt";
@@ -1283,6 +1284,8 @@ function UploadPage({ onNavigate, setSimConfig, devMode }) {
     setDetectionError(null);
 
     const run = async (imgEl) => {
+      if (detectingRef.current) return;
+      detectingRef.current = true;
       try {
         // Always run YOLO for disease verdict + auto-select
         const result = await detectDisease(imgEl);
@@ -1298,6 +1301,7 @@ function UploadPage({ onNavigate, setSimConfig, devMode }) {
       } catch (err) {
         if (!cancelled) setDetectionError("Detection failed: " + err.message);
       } finally {
+        detectingRef.current = false;
         if (!cancelled) setDetecting(false);
       }
     };
@@ -1310,7 +1314,7 @@ function UploadPage({ onNavigate, setSimConfig, devMode }) {
       setTimeout(tryRun, 50);
     };
     tryRun();
-    return () => { cancelled = true; };
+    return () => { cancelled = true; detectingRef.current = false; };
   }, [uploadedImage, maskMode]);
 
   const handleFileSelect = useCallback((file) => {
