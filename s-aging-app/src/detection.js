@@ -12,6 +12,11 @@ import * as ort from 'onnxruntime-web';
 
 // Set to 1 to avoid SharedArrayBuffer / COOP-COEP requirement in older browsers
 ort.env.wasm.numThreads = 1;
+// ORT 1.20+ changed WASM file resolution — point explicitly to CDN so the correct
+// simd-threaded binary is always found (avoids "protobuf parsing failed" on large models)
+ort.env.wasm.wasmPaths = '/';
+// Disable the worker proxy — the 90 MB model can exhaust heap in a worker thread
+ort.env.wasm.proxy = false;
 
 // Class names in training order (alphabetical — matches ultralytics default)
 export const CLASS_NAMES = ['Black_Sigatoka', 'Fusarium_Wilt', 'Healthy'];
@@ -32,12 +37,22 @@ const IOU_THRESH = 0.45;
 
 let _sessionPromise = null;
 
+// Pre-fetch the model as ArrayBuffer so the browser handles any content-encoding
+// (gzip/brotli) before ORT sees the bytes — avoids "protobuf parsing failed" when
+// the production server compresses the .onnx file and ORT's internal fetch doesn't decompress it.
+async function _loadSession() {
+  const res = await fetch(MODEL_URL);
+  if (!res.ok) throw new Error(`Failed to fetch model: ${res.status} ${res.statusText}`);
+  const buffer = await res.arrayBuffer();
+  return ort.InferenceSession.create(buffer, {
+    executionProviders: ['wasm'],
+    graphOptimizationLevel: 'all',
+  });
+}
+
 function getSession() {
   if (!_sessionPromise) {
-    _sessionPromise = ort.InferenceSession.create(MODEL_URL, {
-      executionProviders: ['wasm'],
-      graphOptimizationLevel: 'all',
-    }).catch((err) => {
+    _sessionPromise = _loadSession().catch((err) => {
       _sessionPromise = null; // allow retry on failure
       throw err;
     });
