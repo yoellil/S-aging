@@ -38,13 +38,75 @@ const IOU_THRESH = 0.45;
 let _sessionPromise = null;
 let _inferenceQueue = Promise.resolve();
 
-// Pre-fetch the model as ArrayBuffer so the browser handles any content-encoding
-// (gzip/brotli) before ORT sees the bytes — avoids "protobuf parsing failed" when
-// the production server compresses the .onnx file and ORT's internal fetch doesn't decompress it.
+// ── MODEL CACHE (IndexedDB) ───────────────────────────────────────────────────
+// Stores { tag, buffer } keyed by model filename.
+// tag = ETag or Last-Modified from server, used to invalidate when model updates.
+
+const _IDB_NAME  = 'saging-ort';
+const _IDB_STORE = 'models';
+const _IDB_KEY   = 'best.onnx';
+
+function _openIDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(_IDB_NAME, 1);
+    req.onupgradeneeded = (e) => { e.target.result.createObjectStore(_IDB_STORE); };
+    req.onsuccess = (e) => resolve(e.target.result);
+    req.onerror   = (e) => reject(e.target.error);
+  });
+}
+
+function _idbGet(db) {
+  return new Promise((resolve, reject) => {
+    const req = db.transaction(_IDB_STORE, 'readonly').objectStore(_IDB_STORE).get(_IDB_KEY);
+    req.onsuccess = (e) => resolve(e.target.result);
+    req.onerror   = (e) => reject(e.target.error);
+  });
+}
+
+function _idbPut(db, value) {
+  return new Promise((resolve, reject) => {
+    const req = db.transaction(_IDB_STORE, 'readwrite').objectStore(_IDB_STORE).put(value, _IDB_KEY);
+    req.onsuccess = () => resolve();
+    req.onerror   = (e) => reject(e.target.error);
+  });
+}
+
 async function _loadSession() {
-  const res = await fetch(MODEL_URL);
-  if (!res.ok) throw new Error(`Failed to fetch model: ${res.status} ${res.statusText}`);
-  const buffer = await res.arrayBuffer();
+  let buffer;
+
+  try {
+    const db = await _openIDB();
+
+    // Cheap HEAD request — gets ETag/Last-Modified without downloading the body
+    let serverTag = '';
+    try {
+      const head = await fetch(MODEL_URL, { method: 'HEAD' });
+      serverTag = head.headers.get('etag') || head.headers.get('last-modified') || '';
+    } catch { /* offline or CORS — proceed without tag, will re-download */ }
+
+    const cached = await _idbGet(db);
+
+    if (cached?.buffer && serverTag && cached.tag === serverTag) {
+      console.log('[S-Aging] Model loaded from IndexedDB cache');
+      buffer = cached.buffer;
+    } else {
+      console.log('[S-Aging] Fetching model from network');
+      const res = await fetch(MODEL_URL);
+      if (!res.ok) throw new Error(`Failed to fetch model: ${res.status} ${res.statusText}`);
+      buffer = await res.arrayBuffer();
+      // Write to cache asynchronously — don't block session creation
+      _idbPut(db, { tag: serverTag, buffer }).catch((err) =>
+        console.warn('[S-Aging] IndexedDB write failed:', err.message)
+      );
+    }
+  } catch (err) {
+    // IndexedDB unavailable (private browsing, quota exceeded) — fall back to direct fetch
+    console.warn('[S-Aging] IndexedDB unavailable, fetching directly:', err.message);
+    const res = await fetch(MODEL_URL);
+    if (!res.ok) throw new Error(`Failed to fetch model: ${res.status} ${res.statusText}`);
+    buffer = await res.arrayBuffer();
+  }
+
   return ort.InferenceSession.create(buffer, {
     executionProviders: ['wasm'],
     graphOptimizationLevel: 'basic',
