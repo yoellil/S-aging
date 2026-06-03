@@ -1240,6 +1240,27 @@ function HomePage({ onNavigate, reduceMotion }) {
   );
 }
 
+// Bake CSS-style rotation + flip into a new canvas so detection sees the
+// same orientation the user sees, not the original file orientation.
+function applyTransform(imgEl, rotation, flipH, flipV) {
+  if (rotation === 0 && !flipH && !flipV) return imgEl;
+  const sw = imgEl.naturalWidth || imgEl.width;
+  const sh = imgEl.naturalHeight || imgEl.height;
+  const rotated90 = rotation === 90 || rotation === 270;
+  const cw = rotated90 ? sh : sw;
+  const ch = rotated90 ? sw : sh;
+  const canvas = document.createElement('canvas');
+  canvas.width = cw;
+  canvas.height = ch;
+  const ctx = canvas.getContext('2d');
+  ctx.translate(cw / 2, ch / 2);
+  ctx.rotate((rotation * Math.PI) / 180);
+  if (flipH) ctx.scale(-1, 1);
+  if (flipV) ctx.scale(1, -1);
+  ctx.drawImage(imgEl, -sw / 2, -sh / 2, sw, sh);
+  return canvas;
+}
+
 // ══════════════════════════════════════════════════════════════════════════════
 //  UPLOAD PAGE
 // ══════════════════════════════════════════════════════════════════════════════
@@ -1309,13 +1330,16 @@ function UploadPage({ onNavigate, setSimConfig, devMode }) {
     // imgRef may not be mounted yet — use a short poll
     const tryRun = () => {
       const el = imgRef.current;
-      if (el && el.complete && el.naturalWidth > 0) { run(el); return; }
-      if (el) { el.onload = () => { if (!cancelled) run(el); }; return; }
+      if (el && el.complete && el.naturalWidth > 0) {
+        run(applyTransform(el, imgRotation, imgFlipH, imgFlipV));
+        return;
+      }
+      if (el) { el.onload = () => { if (!cancelled) run(applyTransform(el, imgRotation, imgFlipH, imgFlipV)); }; return; }
       setTimeout(tryRun, 50);
     };
     tryRun();
     return () => { cancelled = true; };
-  }, [uploadedImage, maskMode]);
+  }, [uploadedImage, maskMode, imgRotation, imgFlipH, imgFlipV]);
 
   const handleFileSelect = useCallback((file) => {
     if (!file) return;

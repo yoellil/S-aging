@@ -407,7 +407,7 @@ export async function detectDisease(imgEl) {
  */
 export function colorSegMask(imgEl) {
   const SCA_ROWS = 100, SCA_COLS = 160;
-  const W = imgEl.naturalWidth, H = imgEl.naturalHeight;
+  const W = imgEl.naturalWidth || imgEl.width, H = imgEl.naturalHeight || imgEl.height;
   const canvas = document.createElement("canvas");
   canvas.width = W; canvas.height = H;
   const ctx = canvas.getContext("2d");
