@@ -36,6 +36,7 @@ const IOU_THRESH = 0.45;
 // ── SESSION (singleton) ───────────────────────────────────────────────────────
 
 let _sessionPromise = null;
+let _inferenceQueue = Promise.resolve();
 
 // Pre-fetch the model as ArrayBuffer so the browser handles any content-encoding
 // (gzip/brotli) before ORT sees the bytes — avoids "protobuf parsing failed" when
@@ -331,9 +332,7 @@ function decodeMaskGrid(detections, _protoOutput, imgEl, scale, padX, padY, srcW
  * Returns [] if no detections pass the confidence threshold.
  * Throws on model load / inference error.
  */
-export async function detectDisease(imgEl) {
-  const session = await getSession();
-
+async function _runInference(session, imgEl) {
   console.log(`[S-Aging Detection] Model inputs: [${session.inputNames}]`);
   console.log(`[S-Aging Detection] Model outputs: [${session.outputNames}]`);
 
@@ -392,6 +391,14 @@ export async function detectDisease(imgEl) {
   });
 
   return { detections, maskGrid };
+}
+
+export async function detectDisease(imgEl) {
+  const session = await getSession();
+  const current = _inferenceQueue.then(() => _runInference(session, imgEl));
+  // Absorb errors on the queue so a failed run doesn't block subsequent calls
+  _inferenceQueue = current.catch(() => {});
+  return current;
 }
 
 /**
