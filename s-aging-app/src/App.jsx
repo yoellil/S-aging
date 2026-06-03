@@ -1249,6 +1249,8 @@ function UploadPage({ onNavigate, setSimConfig, devMode, modelReady }) {
   const [density, setDensity] = useState("medium");
   const [duration, setDuration] = useState("30");
   const [drag, setDrag] = useState(false);
+  const [fileLoading, setFileLoading] = useState(false);
+  const [fileProgress, setFileProgress] = useState(0);
   const [uploadedImage, setUploadedImage] = useState(null);
   const [detecting, setDetecting] = useState(false);
   const [detections, setDetections] = useState(null);   // array from detectDisease()
@@ -1328,8 +1330,17 @@ function UploadPage({ onNavigate, setSimConfig, devMode, modelReady }) {
       alert("File size exceeds 10MB limit.");
       return;
     }
+    setFileLoading(true);
+    setFileProgress(0);
     const reader = new FileReader();
-    reader.onload = (e) => setUploadedImage({ url: e.target.result, name: file.name });
+    reader.onprogress = (e) => {
+      if (e.lengthComputable) setFileProgress(Math.round(e.loaded / e.total * 100));
+    };
+    reader.onload = (e) => {
+      setFileProgress(100);
+      setFileLoading(false);
+      setUploadedImage({ url: e.target.result, name: file.name });
+    };
     reader.readAsDataURL(file);
   }, []);
 
@@ -1416,8 +1427,27 @@ function UploadPage({ onNavigate, setSimConfig, devMode, modelReady }) {
           </div>
         )}
 
-        {/* Upload zone */}
-        {!uploadedImage ? (
+        {/* Upload zone / loading bar / preview */}
+        {fileLoading ? (
+          <div className="upload-zone" style={{ cursor: "default", gap: 16 }}>
+            <div className="upload-icon">
+              <LoaderCircle size={24} color={COLORS.green400} strokeWidth={1.5} style={{ animation: "spin 1s linear infinite" }} />
+            </div>
+            <div className="upload-title">Reading image…</div>
+            <div style={{ width: "100%", maxWidth: 280 }}>
+              <div style={{ height: 5, borderRadius: 3, background: "var(--color-border-secondary)", overflow: "hidden" }}>
+                <div style={{
+                  height: "100%", width: `${fileProgress}%`,
+                  background: COLORS.green400, borderRadius: 3,
+                  transition: "width 0.15s ease",
+                }} />
+              </div>
+              <div style={{ textAlign: "right", fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>
+                {fileProgress}%
+              </div>
+            </div>
+          </div>
+        ) : !uploadedImage ? (
           <div
             className={`upload-zone ${drag ? "drag" : ""}`}
             onDragOver={e => { e.preventDefault(); setDrag(true); }}
