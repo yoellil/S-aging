@@ -2639,7 +2639,7 @@ function AboutPage({ setDevMode }) {
             <p>The system is evaluated using detection performance metrics (Mask mAP, Precision, Recall)
               and simulation accuracy metrics (Intersection over Union and Structural Similarity Index Measure).
               Software quality is assessed under ISO-25010 across Functionality Suitability, Performance
-              Efficiency, Interaction Capability, Maintainability, and Security.
+              Efficiency, Interaction Capability, and Reliability.
             </p>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 12, marginTop: 16 }}>
               {[
@@ -2684,8 +2684,7 @@ function AboutPage({ setDevMode }) {
                 { pillar: "Functional Suitability", desc: "The degree to which a product provides functions that meet stated and implied needs — covering functional completeness, correctness, and appropriateness." },
                 { pillar: "Performance Efficiency", desc: "Performance relative to the amount of resources used under stated conditions, including time behavior, resource utilization, and capacity." },
                 { pillar: "Interaction Capability", desc: "The degree to which a product can be used by specified users to achieve goals with effectiveness, efficiency, and satisfaction in a specified context of use." },
-                { pillar: "Maintainability", desc: "The degree of effectiveness and efficiency with which a product can be modified to improve it, correct it, or adapt it to changes in environment and requirements." },
-                { pillar: "Security", desc: "The degree to which a product protects information and data so that persons or systems have data access appropriate to their type and level of authorization." },
+                { pillar: "Reliability", desc: "The degree to which a system performs specified functions under specified conditions for a specified period of time, covering maturity, availability, fault tolerance, and recoverability." },
               ].map(({ pillar, desc }, i) => (
                 <motion.div
                   className="about-iso-card"
