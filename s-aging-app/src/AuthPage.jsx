@@ -73,6 +73,19 @@ export default function AuthPage({ onAuth, initialNotice }) {
           0%   { background-position: 0 0; }
           100% { background-position: 160px 160px; }
         }
+        .auth-layout {
+          position: relative; z-index: 2; width: 100%; max-width: 860px;
+          display: flex; align-items: center; justify-content: center; gap: 48px;
+        }
+        .auth-logo-panel { flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; gap: 16px; }
+        .auth-divider    { width: 1px; height: 280px; background: rgba(255,255,255,0.15); flex-shrink: 0; }
+        .auth-card       { width: 100%; max-width: 420px; }
+        @media (max-width: 600px) {
+          .auth-layout     { flex-direction: column; gap: 0; }
+          .auth-logo-panel { display: none; }
+          .auth-divider    { display: none; }
+          .auth-card       { max-width: 100%; }
+        }
       `}</style>
       {/* Scrolling banana pixel background */}
       <div style={{
@@ -88,22 +101,22 @@ export default function AuthPage({ onAuth, initialNotice }) {
         position: "absolute", inset: 0, zIndex: 1,
         background: "linear-gradient(135deg, rgba(10,22,4,0.7) 0%, rgba(26,46,10,0.5) 100%)",
       }} />
-      <div style={{ position: "relative", zIndex: 2, width: "100%", maxWidth: 860, display: "flex", alignItems: "center", justifyContent: "center", gap: 48 }}>
+      <div className="auth-layout">
         {/* Logo on the left */}
-        <div style={{ flex: "0 0 auto", display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}>
+        <div className="auth-logo-panel">
           <img src="/s-aging_logo.png" alt="S-Aging" style={{ width: 200, height: 200, objectFit: "contain", filter: "drop-shadow(0 4px 24px rgba(0,0,0,0.4))" }} />
           <div style={{ color: "#fff", fontWeight: 700, fontSize: 22, letterSpacing: "-0.5px", textShadow: "0 2px 8px rgba(0,0,0,0.5)" }}>S-Aging</div>
           <div style={{ color: "rgba(255,255,255,0.6)", fontSize: 12, textAlign: "center", textShadow: "0 1px 4px rgba(0,0,0,0.5)" }}>FEU Institute of Technology</div>
           <div style={{ color: "rgba(255,255,255,0.45)", fontSize: 11, textAlign: "center", textShadow: "0 1px 4px rgba(0,0,0,0.5)" }}>by Nautilizers · 2026</div>
         </div>
         {/* Divider */}
-        <div style={{ width: 1, height: 280, background: "rgba(255,255,255,0.15)", flexShrink: 0 }} />
+        <div className="auth-divider" />
       <motion.div
+        className="auth-card"
         initial={{ opacity: 0, y: 24 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
         style={{
-          width: "100%", maxWidth: 420,
           background: "#fff", borderRadius: 16,
           border: "1px solid #E8E7E3",
           boxShadow: "0 4px 32px rgba(0,0,0,0.07)",
