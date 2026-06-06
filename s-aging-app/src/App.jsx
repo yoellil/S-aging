@@ -1059,8 +1059,8 @@ function HomePage({ onNavigate, reduceMotion }) {
           {[
             { label: "Mask mAP@50", value: "0.8245", sub: "YOLOv11-seg · 60 epochs", icon: ScanSearch },
             { label: "Simulation months", value: "30", sub: "Per disease run", icon: Orbit },
-            { label: "SCA grid cells", value: "16 K", sub: "Moore 8-cell neighbourhood", icon: Waypoints },
-            { label: "Target hectares", value: "82 K+", sub: "Mindanao Cavendish farms", icon: Leaf },
+            { label: "3D Leaf Viewer", value: "3D", sub: "PyVista · spatio-temporal", icon: Atom },
+            { label: "2D Field Spread", value: "2D", sub: "SCA · Moore 8-cell grid", icon: Waypoints },
           ].map(({ label, value, sub, icon: Icon }, i) => (
             <motion.div
               className="home-metric-item"
