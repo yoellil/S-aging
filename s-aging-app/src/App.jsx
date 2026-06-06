@@ -1372,7 +1372,6 @@ function UploadPage({ onNavigate, setSimConfig, devMode, modelReady }) {
               {[
                 { name: "Black Sigatoka", color: "#639922", bg: "#EAF3DE" },
                 { name: "Fusarium Wilt TR4", color: "#854F0B", bg: "#FAEEDA" },
-                { name: "Healthy leaf", color: "#0F6E56", bg: "#E1F5EE" },
               ].map(({ name, color, bg }) => (
                 <span key={name} className="upload-condition-chip" style={{ background: bg, color, borderColor: color + "40" }}>
                   <span className="upload-condition-dot" style={{ background: color }} />
