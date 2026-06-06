@@ -10,6 +10,7 @@ import {
 import {
   getProfile, updateProfile, updateUsername, updatePassword,
   uploadProfilePicture, deleteProfilePicture, getSimulationLogs,
+  deleteSimulationLogs,
   searchUsers, getPublicProfile, getPublicSimulationLogs,
 } from "./profileApi";
 
@@ -158,6 +159,9 @@ export default function ProfilePage({ auth, onLogout, onNavigate, setSimConfig, 
   const [simLogs, setSimLogs] = useState([]);
   const [simLogsLoading, setSimLogsLoading] = useState(true);
   const [selectedLog, setSelectedLog] = useState(null);
+  const [deleteMode, setDeleteMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [deleting, setDeleting] = useState(false);
 
   // User search
   const [searchQuery, setSearchQuery] = useState("");
@@ -263,6 +267,28 @@ export default function ProfilePage({ auth, onLogout, onNavigate, setSimConfig, 
     if (res.success) { setProfile(p => ({ ...p, profile_picture_url: null })); flash(res.message); }
     else flash(res.message, "error");
   };
+
+  const handleDeleteSelected = async () => {
+    if (!selectedIds.size) return;
+    setDeleting(true);
+    const ids = [...selectedIds];
+    const res = await deleteSimulationLogs(ids);
+    setDeleting(false);
+    if (res.success) {
+      setSimLogs(logs => logs.filter(l => !selectedIds.has(l.id)));
+      setSelectedIds(new Set());
+      setDeleteMode(false);
+      flash(`Deleted ${ids.length} simulation${ids.length !== 1 ? "s" : ""}.`);
+    } else {
+      flash(res.message || "Delete failed.", "error");
+    }
+  };
+
+  const toggleSelectId = (id) => setSelectedIds(prev => {
+    const next = new Set(prev);
+    next.has(id) ? next.delete(id) : next.add(id);
+    return next;
+  });
 
   // ── State: loading auth ───────────────────────────────────────────────────
   if (auth?.status === "loading") {
@@ -583,6 +609,31 @@ export default function ProfilePage({ auth, onLogout, onNavigate, setSimConfig, 
                     <Activity size={15} />
                     <span>Simulation history</span>
                     {simLogs.length > 0 && <span className="profile-card-badge">{simLogs.length}</span>}
+                    {simLogs.length > 0 && !deleteMode && (
+                      <button
+                        onClick={() => { setDeleteMode(true); setSelectedIds(new Set()); }}
+                        style={{ marginLeft: "auto", fontSize: 11, fontWeight: 600, color: C.red400, background: C.red50, border: "none", borderRadius: 6, padding: "3px 10px", cursor: "pointer" }}
+                      >
+                        Select
+                      </button>
+                    )}
+                    {deleteMode && (
+                      <>
+                        <button
+                          onClick={handleDeleteSelected}
+                          disabled={!selectedIds.size || deleting}
+                          style={{ marginLeft: "auto", fontSize: 11, fontWeight: 600, color: "#fff", background: selectedIds.size ? C.red400 : C.gray400, border: "none", borderRadius: 6, padding: "3px 10px", cursor: selectedIds.size ? "pointer" : "not-allowed", opacity: deleting ? 0.7 : 1 }}
+                        >
+                          {deleting ? "Deleting…" : `Delete${selectedIds.size ? ` (${selectedIds.size})` : ""}`}
+                        </button>
+                        <button
+                          onClick={() => { setDeleteMode(false); setSelectedIds(new Set()); }}
+                          style={{ fontSize: 11, fontWeight: 600, color: C.gray600, background: C.gray100, border: "none", borderRadius: 6, padding: "3px 10px", cursor: "pointer" }}
+                        >
+                          Cancel
+                        </button>
+                      </>
+                    )}
                   </div>
                   {simLogsLoading ? (
                     <div className="profile-hint" style={{ padding: "20px 0", textAlign: "center" }}>Loading…</div>
@@ -595,6 +646,7 @@ export default function ProfilePage({ auth, onLogout, onNavigate, setSimConfig, 
                         const diseaseName = isFW ? "Fusarium Wilt TR4" : "Black Sigatoka";
                         const diseaseColor = isFW ? C.amber400 : C.teal600;
                         const diseaseBg = isFW ? C.amber50 : C.teal50;
+                        const isSelected = selectedIds.has(log.id);
                         return (
                           <motion.div
                             className="profile-simlog-item"
@@ -602,10 +654,20 @@ export default function ProfilePage({ auth, onLogout, onNavigate, setSimConfig, 
                             initial={{ opacity: 0, x: -8 }}
                             animate={{ opacity: 1, x: 0 }}
                             transition={{ delay: i * 0.03, duration: 0.3 }}
-                            onClick={() => setSelectedLog(log)}
-                            title="Click to view saved result"
+                            onClick={() => deleteMode ? toggleSelectId(log.id) : setSelectedLog(log)}
+                            title={deleteMode ? "Click to select" : "Click to view saved result"}
+                            style={isSelected ? { background: C.red50, borderColor: C.red400 + "60" } : {}}
                           >
-                            {log.image_url ? (
+                            {deleteMode ? (
+                              <div style={{
+                                width: 20, height: 20, borderRadius: 4, flexShrink: 0,
+                                border: `2px solid ${isSelected ? C.red400 : C.gray200}`,
+                                background: isSelected ? C.red400 : "#fff",
+                                display: "flex", alignItems: "center", justifyContent: "center",
+                              }}>
+                                {isSelected && <Check size={11} color="#fff" strokeWidth={3} />}
+                              </div>
+                            ) : log.image_url ? (
                               <img src={log.image_url} alt="" className="profile-simlog-thumb" />
                             ) : (
                               <div className="profile-simlog-badge" style={{ background: diseaseBg, color: diseaseColor }}>
@@ -625,7 +687,7 @@ export default function ProfilePage({ auth, onLogout, onNavigate, setSimConfig, 
                             </div>
                             <div className="profile-simlog-right">
                               <div className="profile-simlog-time">{_relativeTime(log.created_at)}</div>
-                              <div className="profile-simlog-rerun">View →</div>
+                              {!deleteMode && <div className="profile-simlog-rerun">View →</div>}
                             </div>
                           </motion.div>
                         );

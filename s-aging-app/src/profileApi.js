@@ -328,6 +328,22 @@ export async function saveSimulationLog({ disease, temp, rh, density, finalStats
   return { success: true };
 }
 
+/** Delete simulation log entries by id (only rows owned by the current user). */
+export async function deleteSimulationLogs(ids) {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { success: false, message: "Not signed in." };
+  if (!ids?.length) return { success: true };
+
+  const { error } = await supabase
+    .from("simulation_logs")
+    .delete()
+    .in("id", ids)
+    .eq("user_id", user.id);
+
+  if (error) return { success: false, message: error.message };
+  return { success: true };
+}
+
 /** Fetch the user's simulation history, newest first. */
 export async function getSimulationLogs(limit = 30) {
   const { data: { user } } = await supabase.auth.getUser();
