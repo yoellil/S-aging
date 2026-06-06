@@ -2288,12 +2288,12 @@ body {
   }
 
   .sim-header .page-title {
-    font-size: 20px;
+    font-size: 18px;
   }
 
   .tag {
-    font-size: 10px;
-    padding: 3px 10px;
+    font-size: 11px;
+    padding: 4px 10px;
   }
 
   .sim-grid {
@@ -2397,8 +2397,9 @@ body {
   }
 
   .metrics-card-title {
-    font-size: 10px;
+    font-size: 12px;
     margin-bottom: 10px;
+    letter-spacing: 0.5px;
   }
 
   .metric-row {
@@ -2500,7 +2501,7 @@ body {
 
   /* ── Sparkline charts ── */
   .metrics-card canvas {
-    height: 48px !important;
+    height: 110px !important;
   }
 }
 
