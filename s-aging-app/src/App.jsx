@@ -7,7 +7,7 @@ import {
   TestTubes, Sparkles, Atom, MoveRight, LoaderCircle, DoorOpen,
   Fingerprint, Leaf, FlaskConical, BookOpen, Users, BarChart3,
   CheckCircle2, Image as ImageIcon, Maximize2, Sun, Menu,
-  LoaderCircle as Loader, ExternalLink,
+  LoaderCircle as Loader, ExternalLink, Camera,
 } from "lucide-react";
 import Antigravity from "./Antigravity";
 import CurvedLoop from "./CurvedLoop";
@@ -1258,8 +1258,10 @@ function UploadPage({ onNavigate, setSimConfig, devMode, modelReady }) {
   const [detectionError, setDetectionError] = useState(null);
   const [maskMode, setMaskMode] = useState("combined"); // "combined" | "yolo" | "colorseg"
   const fileInputRef = useRef(null);
+  const cameraInputRef = useRef(null);
   const imgRef = useRef(null);
   const detectingRef = useRef(false);
+  const [showMobilePicker, setShowMobilePicker] = useState(false);
 
   const envEffect = () => {
     const isFW = selected === "fusarium_wilt";
@@ -1383,14 +1385,21 @@ function UploadPage({ onNavigate, setSimConfig, devMode, modelReady }) {
 
 
 
-        {/* Hidden file input */}
+        {/* Hidden file inputs */}
         <input
           ref={fileInputRef}
           type="file"
           accept="image/jpeg,image/png,image/webp"
+          style={{ display: "none" }}
+          onChange={(e) => { handleFileSelect(e.target.files?.[0]); e.target.value = ""; }}
+        />
+        <input
+          ref={cameraInputRef}
+          type="file"
+          accept="image/jpeg,image/png,image/webp"
           capture="environment"
           style={{ display: "none" }}
-          onChange={(e) => handleFileSelect(e.target.files?.[0])}
+          onChange={(e) => { handleFileSelect(e.target.files?.[0]); e.target.value = ""; }}
         />
 
         {/* ── Tips for best results ── */}
@@ -1453,7 +1462,13 @@ function UploadPage({ onNavigate, setSimConfig, devMode, modelReady }) {
             onDragOver={e => { e.preventDefault(); setDrag(true); }}
             onDragLeave={() => setDrag(false)}
             onDrop={handleDrop}
-            onClick={() => fileInputRef.current?.click()}
+            onClick={() => {
+              if (window.matchMedia("(pointer: coarse)").matches) {
+                setShowMobilePicker(true);
+              } else {
+                fileInputRef.current?.click();
+              }
+            }}
           >
             <div className="upload-icon">
               <CloudUpload size={24} color={COLORS.green400} strokeWidth={1.5} />
@@ -1611,6 +1626,63 @@ function UploadPage({ onNavigate, setSimConfig, devMode, modelReady }) {
         </button>
 
       </div>
+
+      {/* ── Mobile source picker bottom sheet ── */}
+      {showMobilePicker && (
+        <div
+          style={{
+            position: "fixed", inset: 0, zIndex: 1000,
+            background: "rgba(0,0,0,0.5)",
+            display: "flex", alignItems: "flex-end",
+          }}
+          onClick={() => setShowMobilePicker(false)}
+        >
+          <div
+            style={{
+              width: "100%",
+              background: "var(--surface, #fff)",
+              borderRadius: "16px 16px 0 0",
+              paddingBottom: "calc(env(safe-area-inset-bottom) + 8px)",
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div style={{ width: 36, height: 4, background: "var(--border, #e0e0e0)", borderRadius: 2, margin: "10px auto 4px" }} />
+            <div style={{ padding: "10px 20px 6px", fontSize: 13, color: "var(--text-muted)", fontWeight: 500 }}>
+              Add a photo
+            </div>
+            {[
+              { icon: ImageIcon, label: "Choose from Library", action: () => { setShowMobilePicker(false); fileInputRef.current?.click(); } },
+              { icon: Camera,    label: "Take a Photo",        action: () => { setShowMobilePicker(false); cameraInputRef.current?.click(); } },
+            ].map(({ icon: Icon, label, action }) => (
+              <button
+                key={label}
+                onClick={action}
+                style={{
+                  display: "flex", alignItems: "center", gap: 14,
+                  width: "100%", padding: "14px 20px",
+                  background: "none", border: "none", cursor: "pointer",
+                  fontSize: 16, color: "var(--text)", textAlign: "left",
+                }}
+              >
+                <Icon size={20} style={{ color: "var(--green-400, #52b720)", flexShrink: 0 }} />
+                {label}
+              </button>
+            ))}
+            <div style={{ height: 1, background: "var(--border, #e0e0e0)", margin: "4px 0" }} />
+            <button
+              onClick={() => setShowMobilePicker(false)}
+              style={{
+                display: "block", width: "100%", padding: "14px 20px",
+                background: "none", border: "none", cursor: "pointer",
+                fontSize: 16, color: "var(--text-muted)", textAlign: "left",
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
