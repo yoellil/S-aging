@@ -1057,7 +1057,7 @@ function HomePage({ onNavigate, reduceMotion }) {
       <div className="home-metrics-band">
         <div className="home-metrics-inner">
           {[
-            { label: "Mask mAP@50", value: "91.4%", sub: "YOLOv11-seg detection", icon: ScanSearch },
+            { label: "Mask mAP@50", value: "0.8245", sub: "YOLOv11-seg · 60 epochs", icon: ScanSearch },
             { label: "Simulation months", value: "30", sub: "Per disease run", icon: Orbit },
             { label: "SCA grid cells", value: "16 K", sub: "Moore 8-cell neighbourhood", icon: Waypoints },
             { label: "Target hectares", value: "82 K+", sub: "Mindanao Cavendish farms", icon: Leaf },
@@ -2463,7 +2463,7 @@ function AboutPage({ setDevMode }) {
         {/* ── Key research metrics banner ── */}
         <div className="about-metrics-banner">
           {[
-            { icon: ScanSearch, value: "91.4%", label: "Mask mAP@50", sub: "YOLOv11-seg on test set" },
+            { icon: ScanSearch, value: "0.8245", label: "Mask mAP@50", sub: "YOLOv11-seg · 60 epochs" },
             { icon: BarChart3, value: "30 mo", label: "Disease simulation", sub: "Months modelled per run" },
             { icon: FlaskConical, value: "2", label: "Disease models", sub: "Black Sigatoka + Fusarium" },
             { icon: Users, value: "4", label: "Research team", sub: "BS Computer Science · FEU" },
@@ -2576,6 +2576,19 @@ function AboutPage({ setDevMode }) {
               Software quality is assessed under ISO-25010 across Functionality Suitability, Performance
               Efficiency, Interaction Capability, Maintainability, and Security.
             </p>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 12, marginTop: 16 }}>
+              {[
+                { label: "Precision", value: "0.8161" },
+                { label: "Recall", value: "0.7596" },
+                { label: "F1 Score", value: "0.7868" },
+                { label: "mAP@0.5", value: "0.8245" },
+              ].map(({ label, value }) => (
+                <div key={label} style={{ background: "var(--surface-2, rgba(255,255,255,0.04))", borderRadius: 10, padding: "12px 14px", textAlign: "center", border: "1px solid var(--border, rgba(255,255,255,0.08))" }}>
+                  <div style={{ fontSize: 20, fontWeight: 600, color: "var(--green-400, #52b720)", letterSpacing: "-0.02em" }}>{value}</div>
+                  <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>{label}</div>
+                </div>
+              ))}
+            </div>
           </div>
         </FadeIn>
 
@@ -2763,7 +2776,7 @@ export default function SAgingApp() {
       <nav className="nav">
         <div className="nav-logo" onClick={() => navigate("home")}>
           <div className="nav-logo-mark">
-            <img src="/Nautilizers.png" alt="Nautilizers" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+            <img src="/s-aging_logo.png" alt="S-Aging" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
           </div>
           <span className="nav-logo-text">S-Aging</span>
         </div>
@@ -2823,7 +2836,7 @@ export default function SAgingApp() {
               <div className="nav-drawer-top">
                 <div className="nav-logo" onClick={() => navigate("home")} style={{ gap: 8 }}>
                   <div className="nav-logo-mark" style={{ width: 28, height: 28 }}>
-                    <img src="/Nautilizers.png" alt="Nautilizers" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+                    <img src="/s-aging_logo.png" alt="S-Aging" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
                   </div>
                   <span className="nav-logo-text" style={{ fontSize: 16 }}>S-Aging</span>
                 </div>
