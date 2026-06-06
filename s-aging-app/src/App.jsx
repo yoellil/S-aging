@@ -1986,7 +1986,7 @@ function SimulationPage({ config, devMode }) {
           saveSimulationLog({
             disease, temp, rh, density,
             finalStats: lastFrame.stats,
-            months: framesRef.current.length,
+            months,
             imageData: imageData ?? null,
             detections: detections ?? null,
             maskGrid: maskGrid ?? null,
