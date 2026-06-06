@@ -1633,21 +1633,21 @@ function UploadPage({ onNavigate, setSimConfig, devMode, modelReady }) {
           style={{
             position: "fixed", inset: 0, zIndex: 1000,
             background: "rgba(0,0,0,0.5)",
-            display: "flex", alignItems: "flex-end",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            padding: "0 24px",
           }}
           onClick={() => setShowMobilePicker(false)}
         >
           <div
             style={{
-              width: "100%",
+              width: "100%", maxWidth: 340,
               background: "var(--surface, #fff)",
-              borderRadius: "16px 16px 0 0",
-              paddingBottom: "calc(env(safe-area-inset-bottom) + 8px)",
+              borderRadius: 16,
+              overflow: "hidden",
             }}
             onClick={e => e.stopPropagation()}
           >
-            <div style={{ width: 36, height: 4, background: "var(--border, #e0e0e0)", borderRadius: 2, margin: "10px auto 4px" }} />
-            <div style={{ padding: "10px 20px 6px", fontSize: 13, color: "var(--text-muted)", fontWeight: 500 }}>
+            <div style={{ padding: "20px 20px 10px", fontSize: 15, fontWeight: 600, color: "var(--text)", textAlign: "center" }}>
               Add a photo
             </div>
             {[
@@ -1674,7 +1674,7 @@ function UploadPage({ onNavigate, setSimConfig, devMode, modelReady }) {
               style={{
                 display: "block", width: "100%", padding: "14px 20px",
                 background: "none", border: "none", cursor: "pointer",
-                fontSize: 16, color: "var(--text-muted)", textAlign: "left",
+                fontSize: 16, color: "var(--text-muted)", textAlign: "center",
               }}
             >
               Cancel
