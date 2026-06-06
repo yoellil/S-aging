@@ -1014,12 +1014,6 @@ function HomePage({ onNavigate, reduceMotion }) {
               title: "ISO-25010 evaluated",
               desc: "System quality assessed across functionality, performance, interaction, maintainability, and security.",
             },
-            {
-              color: COLORS.amber50, iconColor: COLORS.amber400,
-              icon: <Sprout size={20} />,
-              title: "Philippine banana focus",
-              desc: "Targets Cavendish (Musa acuminata) — the primary export variety from Mindanao's 82,000+ hectares.",
-            },
           ].map(({ color, iconColor, icon, title, desc }, i) => (
             <motion.div
               key={title}
