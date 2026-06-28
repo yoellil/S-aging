@@ -295,7 +295,7 @@ tr:last-child td{border-bottom:none}
     </div>
   </div>
 
-  <h2>Dice Similarity — Initial Pattern Accuracy (Month 0)</h2>
+  <h2>Dice Similarity — Initial Pattern Accuracy (Month 1)</h2>
   ${perClass ? `
   <div class="dice-header">
     Dice Similarity Test &nbsp;—&nbsp;
@@ -313,7 +313,7 @@ tr:last-child td{border-bottom:none}
         : `<div style="height:200px;display:flex;align-items:center;justify-content:center;color:#475569;font-size:12px">No image uploaded</div>`}
     </div>
     <div class="dice-panel">
-      <div class="label">Simulated (Month 0)</div>
+      <div class="label">Simulated (Month 1)</div>
       ${simGridImg
         ? `<img src="${simGridImg}" alt="Simulation Month 0"/>`
         : `<div style="height:200px;display:flex;align-items:center;justify-content:center;color:#475569;font-size:12px">No simulation data</div>`}
@@ -368,7 +368,7 @@ tr:last-child td{border-bottom:none}
     Final state: <strong class="healthy">${(finalStats?.healthy_pct ?? 0).toFixed(1)}%</strong> healthy,
     <strong class="infected">${(finalStats?.infected_pct ?? 0).toFixed(1)}%</strong> infected,
     <strong class="necrotic">${(finalStats?.necrotic_pct ?? 0).toFixed(1)}%</strong> necrotic.
-    ${perClass ? `The YOLOv11 detection mask agreed with the simulation's Month 0 pattern with a mean Dice score of
+    ${perClass ? `The YOLOv11 detection mask agreed with the simulation's Month 1 pattern with a mean Dice score of
     <strong>${fmt(perClass.mean)}</strong> (Healthy ${pct(perClass.healthy)},
     Infected ${pct(perClass.infected)}, Necrotic ${pct(perClass.necrotic)}).` : ""}
   </div>

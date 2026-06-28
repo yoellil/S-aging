@@ -2065,7 +2065,7 @@ function SimulationPage({ config, devMode }) {
   const handleDownloadReport = useCallback(() => {
     const allFrames = framesRef.current;
     const lastFrame = allFrames[allFrames.length - 1];
-    const frame0 = allFrames[0];
+    const frame0 = allFrames[1] ?? allFrames[0];
     const lastMonth = lastFrame?.month ?? 0;
     const fusarium = disease === "fusarium_wilt";
     const dName = fusarium ? "Fusarium Wilt TR4" : "Black Sigatoka";
