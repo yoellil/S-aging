@@ -2082,6 +2082,7 @@ function SimulationPage({ config, devMode }) {
       stageLabel: `${fusarium ? "Phase" : "Stage"} ${finalStage.num} — ${finalStage.name}`,
       stageDesc: finalStage.desc,
       diseaseName: dName,
+      detections: detections ?? null,
     });
     downloadReport(html, `saging-${dName.toLowerCase().replace(/\s+/g, "-")}-${Date.now()}.html`);
   }, [disease, temp, rh, density, months, imageData, maskGrid]);

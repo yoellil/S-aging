@@ -169,6 +169,7 @@ export function generateReportHTML({
   frames, finalStats, envInfo,
   uploadedImage, maskGrid, frame0GridData,
   stageLabel, stageDesc, diseaseName,
+  detections,
 }) {
   // Restore full data URL if only the raw base64 was stored
   const uploadedImgSrc = uploadedImage
@@ -248,6 +249,12 @@ tr:last-child td{border-bottom:none}
 .env-val{font-size:15px;font-weight:600;color:#0f172a}
 .stage-box{background:#f8fafc;border-left:4px solid #475569;border-radius:0 8px 8px 0;padding:14px 18px}
 .summary{background:#f0f9f4;border:1px solid #bbf7d0;border-radius:8px;padding:16px 18px;font-size:13px;color:#166534;line-height:1.8}
+.conf-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
+.conf-card{background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px 14px}
+.conf-name{font-size:12px;font-weight:600;color:#334155;margin-bottom:6px;text-transform:capitalize}
+.conf-bar-wrap{background:#e2e8f0;border-radius:99px;height:8px;overflow:hidden;margin-bottom:4px}
+.conf-bar{height:100%;border-radius:99px;background:linear-gradient(90deg,#16a34a,#22c55e)}
+.conf-pct{font-size:11px;color:#64748b}
 .footer{margin-top:40px;padding-top:14px;border-top:1px solid #e2e8f0;font-size:11px;color:#94a3b8;display:flex;justify-content:space-between}
 @media print{body{font-size:12px}.page{padding:20px}}
 </style>
@@ -365,6 +372,20 @@ tr:last-child td{border-bottom:none}
     <strong>${fmt(perClass.mean)}</strong> (Healthy ${pct(perClass.healthy)},
     Infected ${pct(perClass.infected)}, Necrotic ${pct(perClass.necrotic)}).` : ""}
   </div>
+
+  ${detections && detections.length > 0 ? `
+  <h2>YOLOv11 Detection Confidence</h2>
+  <div class="conf-grid">
+    ${detections.map(d => {
+      const pctVal = Math.round(d.score * 100);
+      const label = d.className.replace(/_/g, " ").replace(/\b\w/g, ch => ch.toUpperCase());
+      return `<div class="conf-card">
+      <div class="conf-name">${label}</div>
+      <div class="conf-bar-wrap"><div class="conf-bar" style="width:${pctVal}%"></div></div>
+      <div class="conf-pct">${pctVal}% confidence</div>
+    </div>`;
+    }).join("\n    ")}
+  </div>` : ""}
 
   <div class="footer">
     <span>S-Aging — Banana Disease Simulation System</span>
