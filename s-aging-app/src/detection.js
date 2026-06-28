@@ -319,12 +319,17 @@ function classifyHSV(R, G, B) {
   }
   const s = max > 0 ? delta / max : 0;
   const v = max;
-  const isGreen  = h >= 70 && h <= 160 && s > 0.15;
-  const isYellow = h >= 35 && h < 75  && s > 0.25 && v > 0.35 && !isGreen;
-  const isBrown  = h >= 10 && h < 45  && s > 0.20 && v < 0.65;
-  const isDark   = v < 0.25 && s > 0.05;
+  const isGreen      = h >= 70 && h <= 160 && s > 0.15;
+  // Yellow/amber halo — lower sat threshold to catch pale early-stage lesions
+  const isYellow     = h >= 28 && h < 75  && s > 0.18 && v > 0.30 && !isGreen;
+  // Brown necrotic tissue
+  const isBrown      = h >= 8  && h < 48  && s > 0.18 && v < 0.68;
+  // Very dark pixels (lesion centers / border)
+  const isDark       = v < 0.32 && s > 0.04;
+  // Gray/silver lesion centers — low saturation, mid brightness (not green, not truly dark)
+  const isGrayLesion = s < 0.12 && v >= 0.32 && v < 0.80 && !isGreen;
   if (isDark || isBrown) return 2;
-  if (isYellow) return 1;
+  if (isYellow || isGrayLesion) return 1;
   return 0;
 }
 
