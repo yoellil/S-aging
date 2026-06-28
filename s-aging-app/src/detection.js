@@ -319,17 +319,12 @@ function classifyHSV(R, G, B) {
   }
   const s = max > 0 ? delta / max : 0;
   const v = max;
-  const isGreen      = h >= 70 && h <= 160 && s > 0.15;
-  // Yellow/amber halo — lower sat threshold to catch pale early-stage lesions
-  const isYellow     = h >= 28 && h < 75  && s > 0.18 && v > 0.30 && !isGreen;
-  // Brown necrotic tissue
-  const isBrown      = h >= 8  && h < 48  && s > 0.18 && v < 0.68;
-  // Very dark pixels (lesion centers / border)
-  const isDark       = v < 0.32 && s > 0.04;
-  // Gray/silver lesion centers — low saturation, mid brightness (not green, not truly dark)
-  const isGrayLesion = s < 0.12 && v >= 0.32 && v < 0.80 && !isGreen;
+  const isGreen  = h >= 70 && h <= 160 && s > 0.15;
+  const isYellow = h >= 30 && h < 75  && s > 0.22 && v > 0.35 && !isGreen;
+  const isBrown  = h >= 8  && h < 48  && s > 0.18 && v < 0.68;
+  const isDark   = v < 0.28 && s > 0.05;
   if (isDark || isBrown) return 2;
-  if (isYellow || isGrayLesion) return 1;
+  if (isYellow) return 1;
   return 0;
 }
 
@@ -362,11 +357,12 @@ function decodeMaskGrid(detections, _protoOutput, imgEl, scale, padX, padY, srcW
     for (let c = 0; c < SCA_COLS; c++) {
       let imgX, imgY;
       if (isPortrait) {
-        imgX = Math.round((r / SCA_ROWS) * srcW);
-        imgY = Math.round((1 - c / SCA_COLS) * srcH);
+        // Portrait: leaf long axis is vertical in photo → map SCA col→photo Y, row→photo X
+        imgX = Math.round((r / (SCA_ROWS - 1)) * srcW);
+        imgY = Math.round((c / (SCA_COLS - 1)) * srcH);
       } else {
-        imgX = Math.round((c / SCA_COLS) * srcW);
-        imgY = Math.round((r / SCA_ROWS) * srcH);
+        imgX = Math.round((c / (SCA_COLS - 1)) * srcW);
+        imgY = Math.round((r / (SCA_ROWS - 1)) * srcH);
       }
 
       const inBox = diseaseDetections.some(
@@ -482,23 +478,31 @@ export async function detectDisease(imgEl) {
 export function colorSegMask(imgEl) {
   const SCA_ROWS = 100, SCA_COLS = 160;
   const W = imgEl.naturalWidth || imgEl.width, H = imgEl.naturalHeight || imgEl.height;
+  const isPortrait = H > W;
   const canvas = document.createElement("canvas");
   canvas.width = W; canvas.height = H;
   const ctx = canvas.getContext("2d");
   ctx.drawImage(imgEl, 0, 0);
   const { data } = ctx.getImageData(0, 0, W, H);
 
-  const cellW = W / SCA_COLS, cellH = H / SCA_ROWS;
+  // Portrait: leaf long axis vertical in photo → col maps to photo Y, row maps to photo X
+  const cellX = isPortrait ? W / SCA_ROWS : W / SCA_COLS;
+  const cellY = isPortrait ? H / SCA_COLS : H / SCA_ROWS;
   const mask = new Array(SCA_ROWS * SCA_COLS).fill(0);
 
   for (let r = 0; r < SCA_ROWS; r++) {
     for (let c = 0; c < SCA_COLS; c++) {
-      // 2×2 sub-sample per cell for robustness
       let sumR = 0, sumG = 0, sumB = 0;
       for (let dy = 0.25; dy < 1; dy += 0.5) {
         for (let dx = 0.25; dx < 1; dx += 0.5) {
-          const px = Math.min(W - 1, Math.round((c + dx) * cellW));
-          const py = Math.min(H - 1, Math.round((r + dy) * cellH));
+          let px, py;
+          if (isPortrait) {
+            px = Math.min(W - 1, Math.round((r + dx) * cellX));
+            py = Math.min(H - 1, Math.round((c + dy) * cellY));
+          } else {
+            px = Math.min(W - 1, Math.round((c + dx) * cellX));
+            py = Math.min(H - 1, Math.round((r + dy) * cellY));
+          }
           const i = (py * W + px) * 4;
           sumR += data[i]; sumG += data[i + 1]; sumB += data[i + 2];
         }
