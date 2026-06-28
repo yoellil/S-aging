@@ -114,6 +114,10 @@ export function generateReportHTML({
   dice, stageLabel, stageDesc,
   diseaseName,
 }) {
+  // uploadedImage is raw base64 (data URL prefix stripped at capture time) — restore it
+  const uploadedImgSrc = uploadedImage
+    ? (uploadedImage.startsWith("data:") ? uploadedImage : `data:image/png;base64,${uploadedImage}`)
+    : null;
   const chartB64 = drawProgressionChart(frames);
   const diceStr = typeof dice === "number" ? `${(dice * 100).toFixed(1)}%` : "N/A";
   const diceColor =
@@ -240,15 +244,15 @@ tr:last-child td{border-bottom:none}
       <div class="dice-key">≥ 70% = Good &nbsp;·&nbsp; 50–69% = Moderate &nbsp;·&nbsp; &lt; 50% = Low overlap</div>
     </div>
   </div>
-  ${(topDownImage || uploadedImage) ? `
+  ${(topDownImage || uploadedImgSrc) ? `
   <div class="images-row">
-    ${uploadedImage ? `<div class="image-card">
-      <img src="${uploadedImage}" alt="Original leaf photo"/>
+    ${uploadedImgSrc ? `<div class="image-card">
+      <img src="${uploadedImgSrc}" alt="Original leaf photo"/>
       <div class="cap">Original leaf photo (uploaded)</div>
     </div>` : ""}
     ${topDownImage ? `<div class="image-card">
-      <img src="${topDownImage}" alt="Simulation Month 0 — top-down orthographic"/>
-      <div class="cap">Simulation — Month 0 (top-down orthographic, background removed)</div>
+      <img src="${topDownImage}" alt="Simulation Month 0 — flat orthographic"/>
+      <div class="cap">Simulation — Month 0 (flat orthographic, background removed)</div>
     </div>` : ""}
   </div>` : ""}
 

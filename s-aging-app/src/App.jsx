@@ -1950,12 +1950,19 @@ const LeafViewer3D = forwardRef(function LeafViewer3D({ frame, disease, devMode 
       }
       texture.needsUpdate = true;
 
-      // Render with top-down orthographic camera + transparent background
-      const halfW = leafSize.x / 2 * 1.05;
-      const halfH = leafSize.y / 2 * 1.05;
-      const ortho = new THREE.OrthographicCamera(-halfW, halfW, halfH, -halfH, 0.1, 500);
-      ortho.position.set(leafCenter.x, leafCenter.y, leafCenter.z + 200);
-      ortho.lookAt(leafCenter.x, leafCenter.y, leafCenter.z);
+      // Render with flat orthographic camera — same orientation as the perspective
+      // camera so the leaf appears the same way the user sees it, but without
+      // perspective depth distortion (leaf looks "laid flat").
+      const maxDim = Math.max(leafSize.x, leafSize.y, leafSize.z);
+      const halfSize = maxDim / 2 * 1.15;
+      const aspect = renderer.domElement.width / renderer.domElement.height;
+      const ortho = new THREE.OrthographicCamera(
+        -halfSize * aspect, halfSize * aspect,
+        halfSize, -halfSize,
+        0.1, 1000
+      );
+      ortho.position.copy(camera.position);
+      ortho.quaternion.copy(camera.quaternion);
       ortho.updateProjectionMatrix();
 
       const prevBg = scene.background;
