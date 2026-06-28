@@ -13,7 +13,7 @@ import Antigravity from "./Antigravity";
 import CurvedLoop from "./CurvedLoop";
 import { detectDisease, colorSegMask, combinedMask, warmupSession } from "./detection";
 import { streamSimulation } from "./api";
-import { computeDice, generateReportHTML, downloadReport } from "./reportGenerator";
+import { generateReportHTML, downloadReport } from "./reportGenerator";
 import { saveSimulationLog } from "./profileApi";
 import { supabase } from "./utils/supabase";
 import AuthPage from "./AuthPage";
@@ -2029,9 +2029,6 @@ function SimulationPage({ config, devMode }) {
   const playRef = useRef(null);
   const cancelledRef = useRef(false);
   const hasSavedRef = useRef(false);
-  const leafViewerRef = useRef(null);
-  const [topDownImage, setTopDownImage] = useState(null);
-  const [dice, setDice] = useState(null);
 
   const isFW = disease === "fusarium_wilt";
   const diseaseName = isFW ? "Fusarium Wilt TR4" : "Black Sigatoka";
@@ -2068,6 +2065,7 @@ function SimulationPage({ config, devMode }) {
   const handleDownloadReport = useCallback(() => {
     const allFrames = framesRef.current;
     const lastFrame = allFrames[allFrames.length - 1];
+    const frame0 = allFrames[0];
     const lastMonth = lastFrame?.month ?? 0;
     const fusarium = disease === "fusarium_wilt";
     const dName = fusarium ? "Fusarium Wilt TR4" : "Black Sigatoka";
@@ -2078,15 +2076,15 @@ function SimulationPage({ config, devMode }) {
       frames: allFrames,
       finalStats: lastFrame?.stats ?? {},
       envInfo: lastFrame?.env ?? {},
-      topDownImage,
       uploadedImage: imageData ?? null,
-      dice,
+      maskGrid: maskGrid ?? null,
+      frame0GridData: frame0?.gridData ?? null,
       stageLabel: `${fusarium ? "Phase" : "Stage"} ${finalStage.num} — ${finalStage.name}`,
       stageDesc: finalStage.desc,
       diseaseName: dName,
     });
     downloadReport(html, `saging-${dName.toLowerCase().replace(/\s+/g, "-")}-${Date.now()}.html`);
-  }, [disease, temp, rh, density, months, topDownImage, imageData, dice]);
+  }, [disease, temp, rh, density, months, imageData, maskGrid]);
 
   // ── Stream simulation frames from FastAPI backend on mount ────────────────
   useEffect(() => {
@@ -2137,28 +2135,6 @@ function SimulationPage({ config, devMode }) {
       clearInterval(playRef.current);
     };
   }, []); // run once on mount
-
-  // ── Top-down capture + DICE on simulation complete ───────────────────────
-  useEffect(() => {
-    if (simState !== "complete") return;
-    const frame0 = framesRef.current[0];
-    if (!frame0) return;
-
-    // Compute DICE: detection seed (maskGrid) vs simulation month-0 grid
-    if (maskGrid && frame0.gridData) {
-      const decoded = typeof frame0.gridData === "string"
-        ? (() => { const b = atob(frame0.gridData); const a = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) a[i] = b.charCodeAt(i); return a; })()
-        : frame0.gridData;
-      setDice(computeDice(maskGrid, decoded));
-    }
-
-    // Capture top-down orthographic screenshot after a brief paint settle
-    const timer = setTimeout(() => {
-      const dataUrl = leafViewerRef.current?.captureTopDown(frame0, disease);
-      if (dataUrl) setTopDownImage(dataUrl);
-    }, 400);
-    return () => clearTimeout(timer);
-  }, [simState]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Play-through timer (only after all frames loaded) ─────────────────────
   useEffect(() => {
@@ -2275,7 +2251,7 @@ function SimulationPage({ config, devMode }) {
                   <>
                     {/* Interactive 3-D leaf viewer */}
                     {simState !== "error" ? (
-                      <LeafViewer3D ref={leafViewerRef} frame={currentFrame} disease={disease} devMode={devMode} />
+                      <LeafViewer3D frame={currentFrame} disease={disease} devMode={devMode} />
                     ) : (
                       <div style={{ padding: 32, textAlign: "center" }}>
                         <div style={{ fontSize: 13, color: COLORS.red400, marginBottom: 10 }}>
