@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, forwardRef, useImperativeHandle } from "react";
 import { motion, AnimatePresence, useMotionValue, useSpring, useInView } from "motion/react";
 import {
   ScanSearch, Waypoints, Thermometer, Biohazard, ShieldCheck, Sprout,
@@ -7,12 +7,13 @@ import {
   TestTubes, Sparkles, Atom, MoveRight, LoaderCircle, DoorOpen,
   Fingerprint, Leaf, FlaskConical, BookOpen, Users, BarChart3,
   CheckCircle2, Image as ImageIcon, Maximize2, Sun, Menu,
-  LoaderCircle as Loader, ExternalLink, Camera,
+  LoaderCircle as Loader, ExternalLink, Camera, FileDown,
 } from "lucide-react";
 import Antigravity from "./Antigravity";
 import CurvedLoop from "./CurvedLoop";
 import { detectDisease, colorSegMask, combinedMask, warmupSession } from "./detection";
 import { streamSimulation } from "./api";
+import { computeDice, generateReportHTML, downloadReport } from "./reportGenerator";
 import { saveSimulationLog } from "./profileApi";
 import { supabase } from "./utils/supabase";
 import AuthPage from "./AuthPage";
@@ -1685,6 +1686,13 @@ function UploadPage({ onNavigate, setSimConfig, devMode, modelReady }) {
 // ══════════════════════════════════════════════════════════════════════════════
 const _LEAF_ROWS = 100, _LEAF_COLS = 160, _TEX = 512;
 
+function _decodeB64(b64) {
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
 // Leaf boundary mask (matches Python leaf_mask_for_grid in simulation/mesh.py)
 const _LEAF_MASK = (() => {
   const mask = new Uint8Array(_LEAF_ROWS * _LEAF_COLS);
@@ -1698,19 +1706,12 @@ const _LEAF_MASK = (() => {
   return mask;
 })();
 
-function LeafViewer3D({ frame, disease, devMode }) {
+const LeafViewer3D = forwardRef(function LeafViewer3D({ frame, disease, devMode }, ref) {
   const mountRef = useRef(null);
   const stateRef = useRef(null);
   const pendingRef = useRef(null); // holds { gridData, intensityData } while scene loads
   const lastPaintArgsRef = useRef(null);
   const devModeRef = useRef(devMode);
-
-  const decodeB64 = (b64) => {
-    const bin = atob(b64);
-    const out = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
-    return out;
-  };
 
   const paintCanvas = useCallback((gridData, intensityData, diseaseType) => {
     lastPaintArgsRef.current = { gridData, intensityData, diseaseType };
@@ -1722,8 +1723,8 @@ function LeafViewer3D({ frame, disease, devMode }) {
     if (baseImg?.complete && baseImg.naturalWidth > 0)
       ctx.drawImage(baseImg, 0, 0, _TEX, _TEX);
 
-    const gridU8 = typeof gridData === "string" ? decodeB64(gridData) : gridData;
-    const intensityU8 = typeof intensityData === "string" ? decodeB64(intensityData) : intensityData;
+    const gridU8 = typeof gridData === "string" ? _decodeB64(gridData) : gridData;
+    const intensityU8 = typeof intensityData === "string" ? _decodeB64(intensityData) : intensityData;
     // GLTF UV bounds from scene.gltf accessor: U 0.2546–0.7454, V 0.0–1.0
     // The 3D model is rotated to display horizontally, so the mask axes
     // are swapped to align with the on-screen orientation:
@@ -1784,7 +1785,7 @@ function LeafViewer3D({ frame, disease, devMode }) {
     const W = container.clientWidth || 960;
     const H = container.clientHeight || 480;
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
     renderer.setSize(W, H);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -1851,6 +1852,11 @@ function LeafViewer3D({ frame, disease, devMode }) {
       camera.lookAt(center);
       controls.target.copy(center);
       controls.update();
+      // Store for top-down capture
+      if (stateRef.current) {
+        stateRef.current.leafCenter = center.clone();
+        stateRef.current.leafSize = size.clone();
+      }
     });
 
     let animId;
@@ -1896,13 +1902,104 @@ function LeafViewer3D({ frame, disease, devMode }) {
     paintCanvas(gridData, intensityData, diseaseType);
   }, [devMode, paintCanvas]);
 
+  // Expose top-down orthographic screenshot to parent via ref
+  useImperativeHandle(ref, () => ({
+    captureTopDown: (frame0, diseaseType) => {
+      const s = stateRef.current;
+      if (!s || !frame0?.gridData) return null;
+      const { renderer, scene, camera, ctx, baseImg, texture, leafCenter, leafSize } = s;
+      if (!leafCenter || !leafSize) return null;
+
+      // Save current canvas content
+      const savedImageData = ctx.getImageData(0, 0, _TEX, _TEX);
+
+      // Paint month-0 disease data
+      ctx.clearRect(0, 0, _TEX, _TEX);
+      if (baseImg?.complete && baseImg.naturalWidth > 0)
+        ctx.drawImage(baseImg, 0, 0, _TEX, _TEX);
+
+      const UV_X_MIN = 0.2546, UV_X_RANGE = 0.4908;
+      const UV_Y_MIN = 0.0,    UV_Y_RANGE = 1.0;
+      const cellW = UV_X_RANGE * _TEX / _LEAF_COLS;
+      const cellH = UV_Y_RANGE * _TEX / _LEAF_ROWS;
+
+      const gridU8 = typeof frame0.gridData === "string" ? _decodeB64(frame0.gridData) : frame0.gridData;
+      const intensityU8 = typeof frame0.intensityData === "string" ? _decodeB64(frame0.intensityData) : frame0.intensityData;
+
+      for (let r = 0; r < _LEAF_ROWS; r++) {
+        for (let c = 0; c < _LEAF_COLS; c++) {
+          const idx = r * _LEAF_COLS + c;
+          const state = gridU8[idx];
+          if (state === 0) continue;
+          const iv = intensityU8[idx] / 255;
+          const px = (UV_X_MIN + (c / _LEAF_COLS) * UV_X_RANGE) * _TEX;
+          const py = (UV_Y_MIN + (r / _LEAF_ROWS) * UV_Y_RANGE) * _TEX;
+          let ri, gi, bi, alpha;
+          if (state === 1) {
+            if (diseaseType === "fusarium_wilt") {
+              ri = 225 + iv*(185-225); gi = 220 + iv*(120-220); bi = 70 + iv*(25-70); alpha = 0.18 + iv*0.72;
+            } else {
+              ri = 160 + iv*(80-160); gi = 140 + iv*(40-140); bi = 45 + iv*(10-45); alpha = 0.50 + 0.45*iv;
+            }
+          } else {
+            ri = 95 + iv*(25-95); gi = 55 + iv*(12-55); bi = 18 + iv*(4-18); alpha = 0.78 + 0.18*iv;
+          }
+          ctx.fillStyle = `rgba(${Math.round(ri)},${Math.round(gi)},${Math.round(bi)},${alpha.toFixed(3)})`;
+          ctx.fillRect(px, py, cellW + 0.5, cellH + 0.5);
+        }
+      }
+      texture.needsUpdate = true;
+
+      // Render with top-down orthographic camera + transparent background
+      const halfW = leafSize.x / 2 * 1.05;
+      const halfH = leafSize.y / 2 * 1.05;
+      const ortho = new THREE.OrthographicCamera(-halfW, halfW, halfH, -halfH, 0.1, 500);
+      ortho.position.set(leafCenter.x, leafCenter.y, leafCenter.z + 200);
+      ortho.lookAt(leafCenter.x, leafCenter.y, leafCenter.z);
+      ortho.updateProjectionMatrix();
+
+      const prevBg = scene.background;
+      scene.background = null;
+      renderer.setClearColor(0x000000, 0);
+      renderer.render(scene, ortho);
+      const dataUrl = renderer.domElement.toDataURL("image/png");
+
+      // Restore: put the saved canvas content back and re-render perspective view
+      scene.background = prevBg;
+      renderer.setClearColor(0x0b180b, 1);
+      ctx.putImageData(savedImageData, 0, 0);
+      texture.needsUpdate = true;
+      renderer.render(scene, camera);
+
+      return dataUrl;
+    },
+  }), []);
+
   return (
     <div
       ref={mountRef}
       style={{ width: "100%", height: 480, borderRadius: 8, overflow: "hidden", cursor: "grab" }}
     />
   );
-}
+});
+
+// ── Disease stage data (module-scope so report handler can access them) ──────
+// BS severity levels follow the Standard Area Diagram (SAD) scale (Springer EJPP 2024)
+const BS_STAGES = [
+  { num: "I",   name: "Initial Specks",       range: [0,  3],  desc: "SAD Level 1 (0–5 % leaf area). Tiny reddish-brown flecks visible on the abaxial (underside) surface — ascospore germination at epidermal level. Optimal RH ≥90 % accelerates onset (Maxapress 2024)." },
+  { num: "II",  name: "Pale Streaks",          range: [3,  7],  desc: "SAD Level 2 (5–13 % leaf area). Dark-brown streaks 2–5 mm parallel to leaf veins, most prominent abaxially. Leaf wetness of 48 h at Topt 27.2 °C enables full ascospore production." },
+  { num: "III", name: "Brown Lesions",         range: [7,  12], desc: "SAD Level 3 (13–23 % leaf area). Streaks lengthen to 20–30 mm, darkening to brown with expanding yellow chlorotic halos. Lesions now visible on adaxial (upper) surface." },
+  { num: "IV",  name: "Coalescing Lesions",    range: [12, 18], desc: "SAD Level 4 (23–40 % leaf area). Adjacent lesions merge; sunken grey-white necrotic centres form with distinct dark border and yellow halo. Sporulation intensifies." },
+  { num: "V",   name: "Necrotic Patches",      range: [18, 24], desc: "SAD Level 5 (40–65 % leaf area). Large coalesced necrotic patches with fading grey centres and black margin. Photosynthetic capacity severely compromised; yield losses begin." },
+  { num: "VI",  name: "Necrotic Collapse",     range: [24, 31], desc: "SAD Level 6 (65–100 % leaf area). Systemic necrosis — leaf tissue collapses and desiccates. Up to 90 % yield loss reported (Maxapress 2024). Functional photosynthetic area effectively lost." },
+];
+// FW phases (MDPI Agronomy 2021; Frontiers Plant Sci 2019)
+const FW_PHASES = [
+  { num: "I",   name: "Root Invasion",         range: [0,  5],  desc: "Foc TR4 chlamydospores germinate in root exudates, penetrate lateral roots, and colonise xylem vessels. No visible foliar symptoms yet; internal vascular discolouration begins in pseudostem." },
+  { num: "II",  name: "Marginal Chlorosis",    range: [5,  12], desc: "Yellowing appears FIRST at the MARGINS of the oldest, outermost leaves — the tissues furthest from the xylem supply. Incubation: 2–5 months after root infection (Agronomy 2021). Leaf margins turn bright yellow then orange-brown." },
+  { num: "III", name: "Pseudostem Wilt",       range: [12, 20], desc: "Chlorosis advances from margins inward toward the midrib. Internal reddish-brown vascular streaking visible in pseudostem cross-section. Wilting progresses from outer to inner leaves; plant unable to maintain turgor." },
+  { num: "IV",  name: "Crown Rot Collapse",    range: [20, 31], desc: "Total collapse — all leaves wilt and the pseudostem rots at the crown. No viable vascular or leaf tissue remains. Soil inoculum (chlamydospores) persists >5 years with no known chemical cure (Frontiers 2019)." },
+];
 
 // ══════════════════════════════════════════════════════════════════════════════
 //  SIMULATION PAGE  — PyVista backend-driven
@@ -1925,6 +2022,9 @@ function SimulationPage({ config, devMode }) {
   const playRef = useRef(null);
   const cancelledRef = useRef(false);
   const hasSavedRef = useRef(false);
+  const leafViewerRef = useRef(null);
+  const [topDownImage, setTopDownImage] = useState(null);
+  const [dice, setDice] = useState(null);
 
   const isFW = disease === "fusarium_wilt";
   const diseaseName = isFW ? "Fusarium Wilt TR4" : "Black Sigatoka";
@@ -1957,6 +2057,29 @@ function SimulationPage({ config, devMode }) {
       return !p;
     });
   }, [timeStep]);
+
+  const handleDownloadReport = useCallback(() => {
+    const allFrames = framesRef.current;
+    const lastFrame = allFrames[allFrames.length - 1];
+    const lastMonth = lastFrame?.month ?? 0;
+    const fusarium = disease === "fusarium_wilt";
+    const dName = fusarium ? "Fusarium Wilt TR4" : "Black Sigatoka";
+    const stages = fusarium ? FW_PHASES : BS_STAGES;
+    const finalStage = stages.find(s => lastMonth >= s.range[0] && lastMonth < s.range[1]) ?? stages[stages.length - 1];
+    const html = generateReportHTML({
+      disease, temp, rh, density, months,
+      frames: allFrames,
+      finalStats: lastFrame?.stats ?? {},
+      envInfo: lastFrame?.env ?? {},
+      topDownImage,
+      uploadedImage: imageData ?? null,
+      dice,
+      stageLabel: `${fusarium ? "Phase" : "Stage"} ${finalStage.num} — ${finalStage.name}`,
+      stageDesc: finalStage.desc,
+      diseaseName: dName,
+    });
+    downloadReport(html, `saging-${dName.toLowerCase().replace(/\s+/g, "-")}-${Date.now()}.html`);
+  }, [disease, temp, rh, density, months, topDownImage, imageData, dice]);
 
   // ── Stream simulation frames from FastAPI backend on mount ────────────────
   useEffect(() => {
@@ -2008,6 +2131,28 @@ function SimulationPage({ config, devMode }) {
     };
   }, []); // run once on mount
 
+  // ── Top-down capture + DICE on simulation complete ───────────────────────
+  useEffect(() => {
+    if (simState !== "complete") return;
+    const frame0 = framesRef.current[0];
+    if (!frame0) return;
+
+    // Compute DICE: detection seed (maskGrid) vs simulation month-0 grid
+    if (maskGrid && frame0.gridData) {
+      const decoded = typeof frame0.gridData === "string"
+        ? (() => { const b = atob(frame0.gridData); const a = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) a[i] = b.charCodeAt(i); return a; })()
+        : frame0.gridData;
+      setDice(computeDice(maskGrid, decoded));
+    }
+
+    // Capture top-down orthographic screenshot after a brief paint settle
+    const timer = setTimeout(() => {
+      const dataUrl = leafViewerRef.current?.captureTopDown(frame0, disease);
+      if (dataUrl) setTopDownImage(dataUrl);
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [simState]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Play-through timer (only after all frames loaded) ─────────────────────
   useEffect(() => {
     clearInterval(playRef.current);
@@ -2043,25 +2188,6 @@ function SimulationPage({ config, devMode }) {
   const necHistory = useMemo(() => frames.map(f => f.stats.necrotic_pct), [frames]);
 
   // ── Disease stage ─────────────────────────────────────────────────────────
-  // BS severity levels follow the new Standard Area Diagram (SAD) scale
-  // (Springer EJPP 2024, doi:10.1007/s10658-024-02917-x) — six quantitative
-  // severity ranges: 0–5 % / 5–13 % / 13–23 % / 23–40 % / 40–65 % / 65–100 %
-  const BS_STAGES = [
-    { num: "I", name: "Initial Specks", range: [0, 3], desc: "SAD Level 1 (0–5 % leaf area). Tiny reddish-brown flecks visible on the abaxial (underside) surface — ascospore germination at epidermal level. Optimal RH ≥90 % accelerates onset (Maxapress 2024)." },
-    { num: "II", name: "Pale Streaks", range: [3, 7], desc: "SAD Level 2 (5–13 % leaf area). Dark-brown streaks 2–5 mm parallel to leaf veins, most prominent abaxially. Leaf wetness of 48 h at Topt 27.2 °C enables full ascospore production." },
-    { num: "III", name: "Brown Lesions", range: [7, 12], desc: "SAD Level 3 (13–23 % leaf area). Streaks lengthen to 20–30 mm, darkening to brown with expanding yellow chlorotic halos. Lesions now visible on adaxial (upper) surface." },
-    { num: "IV", name: "Coalescing Lesions", range: [12, 18], desc: "SAD Level 4 (23–40 % leaf area). Adjacent lesions merge; sunken grey-white necrotic centres form with distinct dark border and yellow halo. Sporulation intensifies." },
-    { num: "V", name: "Necrotic Patches", range: [18, 24], desc: "SAD Level 5 (40–65 % leaf area). Large coalesced necrotic patches with fading grey centres and black margin. Photosynthetic capacity severely compromised; yield losses begin." },
-    { num: "VI", name: "Necrotic Collapse", range: [24, 31], desc: "SAD Level 6 (65–100 % leaf area). Systemic necrosis — leaf tissue collapses and desiccates. Up to 90 % yield loss reported (Maxapress 2024). Functional photosynthetic area effectively lost." },
-  ];
-  // FW phases grounded in: MDPI Agronomy 2021 (Venezuelan FW agro-environmental
-  // factors) and Frontiers Plant Sci 2019 (FW epidemiology)
-  const FW_PHASES = [
-    { num: "I", name: "Root Invasion", range: [0, 5], desc: "Foc TR4 chlamydospores germinate in root exudates, penetrate lateral roots, and colonise xylem vessels. No visible foliar symptoms yet; internal vascular discolouration begins in pseudostem." },
-    { num: "II", name: "Marginal Chlorosis", range: [5, 12], desc: "Yellowing appears FIRST at the MARGINS of the oldest, outermost leaves — the tissues furthest from the xylem supply. Incubation: 2–5 months after root infection (Agronomy 2021). Leaf margins turn bright yellow then orange-brown." },
-    { num: "III", name: "Pseudostem Wilt", range: [12, 20], desc: "Chlorosis advances from margins inward toward the midrib. Internal reddish-brown vascular streaking visible in pseudostem cross-section. Wilting progresses from outer to inner leaves; plant unable to maintain turgor." },
-    { num: "IV", name: "Crown Rot Collapse", range: [20, 31], desc: "Total collapse — all leaves wilt and the pseudostem rots at the crown. No viable vascular or leaf tissue remains. Soil inoculum (chlamydospores) persists >5 years with no known chemical cure (Frontiers 2019)." },
-  ];
   const stageList = isFW ? FW_PHASES : BS_STAGES;
   const stageType = isFW ? "Phase" : "Stage";
   const stage = stageList.find(s => month >= s.range[0] && month < s.range[1]) ?? stageList[stageList.length - 1];
@@ -2095,7 +2221,19 @@ function SimulationPage({ config, devMode }) {
               )}
             </div>
           </div>
-          <div className="sim-header-right" />
+          <div className="sim-header-right">
+            {simState === "complete" && (
+              <button
+                className="play-btn"
+                onClick={handleDownloadReport}
+                title="Download simulation report as HTML"
+                style={{ display: "flex", alignItems: "center", gap: 6 }}
+              >
+                <FileDown size={14} />
+                Download Report
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="sim-grid">
@@ -2130,7 +2268,7 @@ function SimulationPage({ config, devMode }) {
                   <>
                     {/* Interactive 3-D leaf viewer */}
                     {simState !== "error" ? (
-                      <LeafViewer3D frame={currentFrame} disease={disease} devMode={devMode} />
+                      <LeafViewer3D ref={leafViewerRef} frame={currentFrame} disease={disease} devMode={devMode} />
                     ) : (
                       <div style={{ padding: 32, textAlign: "center" }}>
                         <div style={{ fontSize: 13, color: COLORS.red400, marginBottom: 10 }}>
