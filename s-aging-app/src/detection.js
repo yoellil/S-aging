@@ -357,9 +357,10 @@ function decodeMaskGrid(detections, _protoOutput, imgEl, scale, padX, padY, srcW
     for (let c = 0; c < SCA_COLS; c++) {
       let imgX, imgY;
       if (isPortrait) {
-        // Portrait: leaf long axis is vertical in photo → map SCA col→photo Y, row→photo X
+        // CW 90° rotation: portrait bottom → landscape left (col 0)
+        // imgX = portrait X (row → short axis), imgY = portrait Y (col → long axis, inverted for CW)
         imgX = Math.round((r / (SCA_ROWS - 1)) * srcW);
-        imgY = Math.round((c / (SCA_COLS - 1)) * srcH);
+        imgY = Math.round((1 - c / (SCA_COLS - 1)) * srcH);
       } else {
         imgX = Math.round((c / (SCA_COLS - 1)) * srcW);
         imgY = Math.round((r / (SCA_ROWS - 1)) * srcH);
@@ -479,15 +480,27 @@ export function colorSegMask(imgEl) {
   const SCA_ROWS = 100, SCA_COLS = 160;
   const W = imgEl.naturalWidth || imgEl.width, H = imgEl.naturalHeight || imgEl.height;
   const isPortrait = H > W;
-  const canvas = document.createElement("canvas");
-  canvas.width = W; canvas.height = H;
-  const ctx = canvas.getContext("2d");
-  ctx.drawImage(imgEl, 0, 0);
-  const { data } = ctx.getImageData(0, 0, W, H);
 
-  // Portrait: leaf long axis vertical in photo → col maps to photo Y, row maps to photo X
-  const cellX = isPortrait ? W / SCA_ROWS : W / SCA_COLS;
-  const cellY = isPortrait ? H / SCA_COLS : H / SCA_ROWS;
+  // For portrait: rotate 90° CW so the leaf long axis becomes horizontal,
+  // matching the SCA grid (cols = leaf length, rows = leaf width).
+  // CW rotation: portrait bottom → landscape left (col 0).
+  const canvas = document.createElement("canvas");
+  let sW, sH;
+  if (isPortrait) {
+    sW = H; sH = W;
+    canvas.width = sW; canvas.height = sH;
+    const rctx = canvas.getContext("2d");
+    rctx.translate(H, 0);
+    rctx.rotate(Math.PI / 2);
+    rctx.drawImage(imgEl, 0, 0, W, H);
+  } else {
+    sW = W; sH = H;
+    canvas.width = W; canvas.height = H;
+    canvas.getContext("2d").drawImage(imgEl, 0, 0);
+  }
+  const data = canvas.getContext("2d").getImageData(0, 0, sW, sH).data;
+
+  const cellW = sW / SCA_COLS, cellH = sH / SCA_ROWS;
   const mask = new Array(SCA_ROWS * SCA_COLS).fill(0);
 
   for (let r = 0; r < SCA_ROWS; r++) {
@@ -495,15 +508,9 @@ export function colorSegMask(imgEl) {
       let sumR = 0, sumG = 0, sumB = 0;
       for (let dy = 0.25; dy < 1; dy += 0.5) {
         for (let dx = 0.25; dx < 1; dx += 0.5) {
-          let px, py;
-          if (isPortrait) {
-            px = Math.min(W - 1, Math.round((r + dx) * cellX));
-            py = Math.min(H - 1, Math.round((c + dy) * cellY));
-          } else {
-            px = Math.min(W - 1, Math.round((c + dx) * cellX));
-            py = Math.min(H - 1, Math.round((r + dy) * cellY));
-          }
-          const i = (py * W + px) * 4;
+          const px = Math.min(sW - 1, Math.round((c + dx) * cellW));
+          const py = Math.min(sH - 1, Math.round((r + dy) * cellH));
+          const i = (py * sW + px) * 4;
           sumR += data[i]; sumG += data[i + 1]; sumB += data[i + 2];
         }
       }
