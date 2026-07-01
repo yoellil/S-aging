@@ -32,9 +32,9 @@ const BG_CLR       = "#0f0f0f";
 // Returns: -1=background, 0=healthy, 1=infected, 2=necrotic
 function _classifyHSVPhoto(R, G, B) {
   const brightness = (R + G + B) / 3;
-  // Lower floor vs dice.py (25→10): dark necrotic tissue (brightness 10-25) must not
-  // become background before the isDark check runs. _inLeaf already guards non-leaf cells.
-  if (brightness < 10 || brightness > 230) return -1;
+  // Tight floor/ceiling: only exclude truly-black or truly-white pixels as background.
+  // _inLeaf already excludes non-leaf cells; dark necrotic tissue must reach isDark check.
+  if (brightness < 8 || brightness > 240) return -1;
   const rn = R / 255, gn = G / 255, bn = B / 255;
   const mx = Math.max(rn, gn, bn), mn = Math.min(rn, gn, bn);
   const delta = mx - mn;
@@ -164,26 +164,47 @@ export function drawSimulatedGrid(gridData) {
   return _drawGrid(gridData).toDataURL("image/png");
 }
 
-// Render the photo's HSV classification as a colored grid (same style as sim grid).
-// -1 (background/unclassifiable pixels) render as near-black inside the ellipse.
-function drawPhotoHSVGrid(photoMask) {
-  const W = _COLS * _CELL, H = _ROWS * _CELL;
-  const canvas = document.createElement("canvas");
-  canvas.width = W; canvas.height = H;
-  const ctx = canvas.getContext("2d");
+// Render the full photo with per-pixel HSV classification coloring.
+// Shows the same orientation as the original photo (no rotation, no oval).
+// Pixels too dark/bright/desaturated to classify show as near-black.
+async function _drawPhotoHSVImage(imgDataURL) {
+  return new Promise(resolve => {
+    const img = new Image();
+    img.onload = () => {
+      const srcW = img.naturalWidth, srcH = img.naturalHeight;
+      // Cap at 900px on the long side so the report stays a reasonable size
+      const scale = Math.min(1, 900 / Math.max(srcW, srcH));
+      const dW = Math.round(srcW * scale);
+      const dH = Math.round(srcH * scale);
 
-  ctx.fillStyle = "#ffffff";
-  ctx.fillRect(0, 0, W, H);
+      const srcCanvas = document.createElement("canvas");
+      srcCanvas.width = dW; srcCanvas.height = dH;
+      srcCanvas.getContext("2d").drawImage(img, 0, 0, dW, dH);
+      const src = srcCanvas.getContext("2d").getImageData(0, 0, dW, dH).data;
 
-  for (let r = 0; r < _ROWS; r++) {
-    for (let c = 0; c < _COLS; c++) {
-      if (!_inLeaf(r, c)) continue;
-      const v = photoMask[r * _COLS + c];
-      ctx.fillStyle = v < 0 ? BG_CLR : STATE_COLOR[v];
-      ctx.fillRect(c * _CELL, r * _CELL, _CELL, _CELL);
-    }
-  }
-  return canvas.toDataURL("image/png");
+      const outCanvas = document.createElement("canvas");
+      outCanvas.width = dW; outCanvas.height = dH;
+      const outCtx = outCanvas.getContext("2d");
+      const out = outCtx.createImageData(dW, dH);
+
+      const COLORS = [
+        [54, 134, 38],   // 0 healthy  → green  #368626
+        [232, 218, 22],  // 1 infected → yellow #e8da16
+        [120, 60, 20],   // 2 necrotic → brown  #783c14
+      ];
+
+      for (let i = 0; i < dW * dH; i++) {
+        const s = i * 4;
+        const cls = _classifyHSVPhoto(src[s], src[s + 1], src[s + 2]);
+        const [r, g, b] = cls < 0 ? [15, 15, 15] : COLORS[cls];
+        out.data[s] = r; out.data[s + 1] = g; out.data[s + 2] = b; out.data[s + 3] = 255;
+      }
+
+      outCtx.putImageData(out, 0, 0);
+      resolve(outCanvas.toDataURL("image/png"));
+    };
+    img.src = imgDataURL;
+  });
 }
 
 // Agreement map: class color = agree, red = disagree, near-black = background
@@ -295,7 +316,7 @@ export async function generateReportHTML({
   const photoMask = uploadedImgSrc ? await _computePhotoMask(uploadedImgSrc) : null;
 
   // Generate 2-D grid images
-  const photoHSVImg    = photoMask ? drawPhotoHSVGrid(photoMask) : null;
+  const photoHSVImg    = uploadedImgSrc ? await _drawPhotoHSVImage(uploadedImgSrc) : null;
   const simGridImg     = frame0GridData ? drawSimulatedGrid(frame0GridData) : null;
   const agreementImg   = (photoMask && frame0GridData) ? drawAgreementMap(photoMask, frame0GridData) : null;
   const perClass       = computePerClassDice(photoMask, frame0GridData);
