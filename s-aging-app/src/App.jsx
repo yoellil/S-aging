@@ -2062,23 +2062,23 @@ function SimulationPage({ config, devMode }) {
     });
   }, [timeStep]);
 
-  const handleDownloadReport = useCallback(() => {
+  const handleDownloadReport = useCallback(async () => {
     const allFrames = framesRef.current;
     const lastFrame = allFrames[allFrames.length - 1];
-    const frame0 = allFrames[1] ?? allFrames[0];
     const lastMonth = lastFrame?.month ?? 0;
+    const frame1 = allFrames[1] ?? allFrames[0]; // Month 1 = initial extraction state
     const fusarium = disease === "fusarium_wilt";
     const dName = fusarium ? "Fusarium Wilt TR4" : "Black Sigatoka";
     const stages = fusarium ? FW_PHASES : BS_STAGES;
     const finalStage = stages.find(s => lastMonth >= s.range[0] && lastMonth < s.range[1]) ?? stages[stages.length - 1];
-    const html = generateReportHTML({
+    const html = await generateReportHTML({
       disease, temp, rh, density, months,
       frames: allFrames,
       finalStats: lastFrame?.stats ?? {},
       envInfo: lastFrame?.env ?? {},
       uploadedImage: imageData ?? null,
       maskGrid: maskGrid ?? null,
-      frame0GridData: frame0?.gridData ?? null,
+      frame0GridData: frame1?.gridData ?? null,
       stageLabel: `${fusarium ? "Phase" : "Stage"} ${finalStage.num} — ${finalStage.name}`,
       stageDesc: finalStage.desc,
       diseaseName: dName,

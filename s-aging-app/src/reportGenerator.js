@@ -28,7 +28,85 @@ const AGREE_COLOR  = ["#368626", "#e8da16", "#783c14"]; // same: agree = class c
 const DISAGREE_CLR = "#dc3232";
 const BG_CLR       = "#0f0f0f";
 
+// ── HSV classifier matching dice.py exactly ───────────────────────────────────
+// Returns: -1=background, 0=healthy, 1=infected, 2=necrotic
+function _classifyHSVPhoto(R, G, B) {
+  const brightness = (R + G + B) / 3;
+  if (brightness < 25 || brightness > 210) return -1;
+  const rn = R / 255, gn = G / 255, bn = B / 255;
+  const mx = Math.max(rn, gn, bn), mn = Math.min(rn, gn, bn);
+  const delta = mx - mn;
+  if (mx > 0 && delta / mx < 0.08) return -1; // low-sat = background
+  let h = 0;
+  if (delta > 0.01) {
+    if      (mx === rn) h = 60 * (((gn - bn) / delta) % 6);
+    else if (mx === gn) h = 60 * ((bn - rn) / delta + 2);
+    else                h = 60 * ((rn - gn) / delta + 4);
+    if (h < 0) h += 360;
+  }
+  const s = mx > 0 ? delta / mx : 0;
+  const v = mx;
+  const isGreen  = h >= 70 && h <= 160 && s > 0.15;
+  const isYellow = h >= 25 && h < 80   && s > 0.10 && v > 0.25 && !isGreen;
+  const isBrown  = h >= 10 && h < 45   && s > 0.20 && v < 0.65;
+  const isDark   = v < 0.25 && s > 0.05;
+  if (isDark || isBrown) return 2;
+  if (isYellow) return 1;
+  if (isGreen)  return 0;
+  return -1;
+}
+
+// Classify the uploaded photo at SCA grid resolution (160×100) using dice.py HSV.
+// Returns Int8Array[16000] with -1=background, 0/1/2=class.
+// Portrait images are CW-rotated so their long axis maps to grid columns.
+async function _computePhotoMask(imgDataURL) {
+  return new Promise(resolve => {
+    const img = new Image();
+    img.onload = () => {
+      const srcW = img.naturalWidth, srcH = img.naturalHeight;
+      const isPortrait = srcH > srcW;
+      const canvas = document.createElement("canvas");
+      let sW, sH;
+      if (isPortrait) {
+        sW = srcH; sH = srcW;
+        canvas.width = sW; canvas.height = sH;
+        const rctx = canvas.getContext("2d");
+        rctx.translate(srcH, 0);
+        rctx.rotate(Math.PI / 2);
+        rctx.drawImage(img, 0, 0, srcW, srcH);
+      } else {
+        sW = srcW; sH = srcH;
+        canvas.width = sW; canvas.height = sH;
+        canvas.getContext("2d").drawImage(img, 0, 0);
+      }
+      const data = canvas.getContext("2d").getImageData(0, 0, sW, sH).data;
+      const cellW = sW / _COLS, cellH = sH / _ROWS;
+      const mask = new Int8Array(_ROWS * _COLS).fill(-1);
+      for (let r = 0; r < _ROWS; r++) {
+        for (let c = 0; c < _COLS; c++) {
+          if (!_inLeaf(r, c)) continue;
+          // 2×2 sub-sample per cell (matches colorSegMask in detection.js)
+          let sumR = 0, sumG = 0, sumB = 0;
+          for (let dy = 0.25; dy < 1; dy += 0.5) {
+            for (let dx = 0.25; dx < 1; dx += 0.5) {
+              const px = Math.min(sW - 1, Math.round((c + dx) * cellW));
+              const py = Math.min(sH - 1, Math.round((r + dy) * cellH));
+              const idx = (py * sW + px) * 4;
+              sumR += data[idx]; sumG += data[idx + 1]; sumB += data[idx + 2];
+            }
+          }
+          mask[r * _COLS + c] = _classifyHSVPhoto(sumR / 4, sumG / 4, sumB / 4);
+        }
+      }
+      resolve(mask);
+    };
+    img.src = imgDataURL;
+  });
+}
+
 // ── Per-class Dice ────────────────────────────────────────────────────────────
+// maskA: Int8Array from _computePhotoMask (-1=bg, 0/1/2=class)
+// gridDataB: SCA simulation frame gridData (0/1/2 only)
 export function computePerClassDice(maskA, gridDataB) {
   if (!maskA || !gridDataB) return null;
   const b = _resolve(gridDataB);
@@ -36,9 +114,9 @@ export function computePerClassDice(maskA, gridDataB) {
   const inter = [0, 0, 0], sumA = [0, 0, 0], sumB = [0, 0, 0];
   for (let r = 0; r < _ROWS; r++) {
     for (let c = 0; c < _COLS; c++) {
-      if (!_inLeaf(r, c)) continue; // exclude background cells (matches dice.py)
+      if (!_inLeaf(r, c)) continue;
       const i = r * _COLS + c;
-      const a = maskA[i] ?? 0;
+      const a = maskA[i]; // -1 background pixels don't match any class → not counted
       const bv = b[i];
       for (let cls = 0; cls < 3; cls++) {
         const ia = a === cls ? 1 : 0, ib = bv === cls ? 1 : 0;
@@ -101,8 +179,10 @@ export function drawAgreementMap(maskA, gridDataB) {
     for (let c = 0; c < _COLS; c++) {
       if (!_inLeaf(r, c)) continue;
       const i = r * _COLS + c;
-      const a = maskA[i] ?? 0;
+      const a = maskA[i]; // -1 = photo background
+      if (a < 0) continue; // background pixel → stay as BG_CLR (dice.py: "one or both are background → dark")
       const bv = b[i];
+      // Both foreground: agree → class color, disagree → red
       ctx.fillStyle = a === bv ? AGREE_COLOR[bv] : DISAGREE_CLR;
       ctx.fillRect(c * _CELL, r * _CELL, _CELL, _CELL);
     }
@@ -172,7 +252,8 @@ export function drawProgressionChart(frames) {
 }
 
 // ── HTML report ───────────────────────────────────────────────────────────────
-export function generateReportHTML({
+// Returns a Promise<string> — await it before passing to downloadReport.
+export async function generateReportHTML({
   disease, temp, rh, density, months,
   frames, finalStats, envInfo,
   uploadedImage, maskGrid, frame0GridData,
@@ -184,10 +265,15 @@ export function generateReportHTML({
     ? (uploadedImage.startsWith("data:") ? uploadedImage : `data:image/png;base64,${uploadedImage}`)
     : null;
 
+  // Classify the raw photo pixels with dice.py HSV (independent of YOLO maskGrid).
+  // This gives honest Dice scores — photo HSV ≠ YOLO detection, so disagreement
+  // between them reflects real classification differences rather than ~1.0 self-comparison.
+  const photoMask = uploadedImgSrc ? await _computePhotoMask(uploadedImgSrc) : null;
+
   // Generate 2-D grid images
   const simGridImg     = frame0GridData ? drawSimulatedGrid(frame0GridData) : null;
-  const agreementImg   = (maskGrid && frame0GridData) ? drawAgreementMap(maskGrid, frame0GridData) : null;
-  const perClass       = computePerClassDice(maskGrid, frame0GridData);
+  const agreementImg   = (photoMask && frame0GridData) ? drawAgreementMap(photoMask, frame0GridData) : null;
+  const perClass       = computePerClassDice(photoMask, frame0GridData);
   const chartB64       = drawProgressionChart(frames);
 
   const fmt = v => typeof v === "number" ? v.toFixed(3) : "N/A";
@@ -303,7 +389,7 @@ tr:last-child td{border-bottom:none}
     </div>
   </div>
 
-  <h2>Dice Similarity — Initial Pattern Accuracy (Month 1)</h2>
+  <h2>Dice Similarity — Photo HSV vs Initial SCA Extraction (Month 1)</h2>
   ${perClass ? `
   <div class="dice-header">
     Dice Similarity Test &nbsp;—&nbsp;
@@ -321,9 +407,9 @@ tr:last-child td{border-bottom:none}
         : `<div style="height:200px;display:flex;align-items:center;justify-content:center;color:#475569;font-size:12px">No image uploaded</div>`}
     </div>
     <div class="dice-panel">
-      <div class="label">Simulated (Month 1)</div>
+      <div class="label">Simulated (Month 1 — Initial Extraction)</div>
       ${simGridImg
-        ? `<img src="${simGridImg}" alt="Simulation Month 0"/>`
+        ? `<img src="${simGridImg}" alt="Simulation Month 1"/>`
         : `<div style="height:200px;display:flex;align-items:center;justify-content:center;color:#475569;font-size:12px">No simulation data</div>`}
     </div>
     <div class="dice-panel">
@@ -376,7 +462,7 @@ tr:last-child td{border-bottom:none}
     Final state: <strong class="healthy">${(finalStats?.healthy_pct ?? 0).toFixed(1)}%</strong> healthy,
     <strong class="infected">${(finalStats?.infected_pct ?? 0).toFixed(1)}%</strong> infected,
     <strong class="necrotic">${(finalStats?.necrotic_pct ?? 0).toFixed(1)}%</strong> necrotic.
-    ${perClass ? `The YOLOv11 detection mask agreed with the simulation's Month 1 pattern with a mean Dice score of
+    ${perClass ? `The photo's raw HSV pixel classification agreed with the YOLO-extracted SCA grid at Month 1 with a mean Dice score of
     <strong>${fmt(perClass.mean)}</strong> (Healthy ${pct(perClass.healthy)},
     Infected ${pct(perClass.infected)}, Necrotic ${pct(perClass.necrotic)}).` : ""}
   </div>
