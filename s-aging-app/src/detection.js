@@ -306,10 +306,12 @@ function parseDetections(output0, numMaskCoeffs, scale, padX, padY, srcW, srcH) 
 // Returns 2 (necrotic), 1 (infected), or 0 (healthy/background).
 function classifyHSV(R, G, B) {
   const brightness = (R + G + B) / 3;
-  if (brightness < 25 || brightness > 235) return 0;
+  if (brightness < 25 || brightness > 210) return 0;
   const rn = R / 255, gn = G / 255, bn = B / 255;
   const max = Math.max(rn, gn, bn), min = Math.min(rn, gn, bn);
   const delta = max - min;
+  const s = max > 0 ? delta / max : 0;
+  if (s < 0.08) return 0; // low-saturation = near-grey background
   let h = 0;
   if (delta > 0.01) {
     if (max === rn)      h = 60 * (((gn - bn) / delta) % 6);
@@ -317,12 +319,11 @@ function classifyHSV(R, G, B) {
     else                 h = 60 * ((rn - gn) / delta + 4);
     if (h < 0) h += 360;
   }
-  const s = max > 0 ? delta / max : 0;
   const v = max;
   const isGreen  = h >= 70 && h <= 160 && s > 0.15;
-  const isYellow = h >= 30 && h < 75  && s > 0.22 && v > 0.35 && !isGreen;
-  const isBrown  = h >= 8  && h < 48  && s > 0.18 && v < 0.68;
-  const isDark   = v < 0.28 && s > 0.05;
+  const isYellow = h >= 25 && h < 80   && s > 0.10 && v > 0.25 && !isGreen;
+  const isBrown  = h >= 10 && h < 45   && s > 0.20 && v < 0.65;
+  const isDark   = v < 0.25 && s > 0.05;
   if (isDark || isBrown) return 2;
   if (isYellow) return 1;
   return 0;

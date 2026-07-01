@@ -22,22 +22,28 @@ function _resolve(grid) {
   return typeof grid === "string" ? _b64decode(grid) : grid;
 }
 
-// State → fill color
-const STATE_COLOR = ["#22c55e", "#d97706", "#78350f"]; // healthy / infected / necrotic
+// State → fill color (matches dice.py reference exactly)
+const STATE_COLOR  = ["#368626", "#e8da16", "#783c14"]; // healthy / infected / necrotic
+const AGREE_COLOR  = ["#368626", "#e8da16", "#783c14"]; // same: agree = class color
+const DISAGREE_CLR = "#dc3232";
+const BG_CLR       = "#0f0f0f";
 
 // ── Per-class Dice ────────────────────────────────────────────────────────────
 export function computePerClassDice(maskA, gridDataB) {
   if (!maskA || !gridDataB) return null;
   const b = _resolve(gridDataB);
-  const n = Math.min(maskA.length, b.length);
 
   const inter = [0, 0, 0], sumA = [0, 0, 0], sumB = [0, 0, 0];
-  for (let i = 0; i < n; i++) {
-    const a = maskA[i] ?? 0;
-    const bv = b[i];
-    for (let cls = 0; cls < 3; cls++) {
-      const ia = a === cls ? 1 : 0, ib = bv === cls ? 1 : 0;
-      inter[cls] += ia & ib; sumA[cls] += ia; sumB[cls] += ib;
+  for (let r = 0; r < _ROWS; r++) {
+    for (let c = 0; c < _COLS; c++) {
+      if (!_inLeaf(r, c)) continue; // exclude background cells (matches dice.py)
+      const i = r * _COLS + c;
+      const a = maskA[i] ?? 0;
+      const bv = b[i];
+      for (let cls = 0; cls < 3; cls++) {
+        const ia = a === cls ? 1 : 0, ib = bv === cls ? 1 : 0;
+        inter[cls] += ia & ib; sumA[cls] += ia; sumB[cls] += ib;
+      }
     }
   }
   const dice = inter.map((v, i) =>
@@ -54,7 +60,7 @@ export function computePerClassDice(maskA, gridDataB) {
 // ── 2-D grid renderers ────────────────────────────────────────────────────────
 
 // Render simulation grid: each cell colored by its state (0/1/2), elliptical mask
-function _drawGrid(gridData, bg = "#111827") {
+function _drawGrid(gridData, bg = "#ffffff") {
   const W = _COLS * _CELL, H = _ROWS * _CELL;
   const canvas = document.createElement("canvas");
   canvas.width = W; canvas.height = H;
@@ -78,14 +84,16 @@ export function drawSimulatedGrid(gridData) {
   return _drawGrid(gridData).toDataURL("image/png");
 }
 
-// Agreement map: green/yellow/brown = agree, red = disagree, black = bg
+// Agreement map: class color = agree, red = disagree, near-black = background
+// Matches dice.py: outside-ellipse cells stay background; inside cells
+// that agree → class color, disagree → DISAGREE_CLR (both must be foreground).
 export function drawAgreementMap(maskA, gridDataB) {
   const W = _COLS * _CELL, H = _ROWS * _CELL;
   const canvas = document.createElement("canvas");
   canvas.width = W; canvas.height = H;
   const ctx = canvas.getContext("2d");
 
-  ctx.fillStyle = "#111827";
+  ctx.fillStyle = BG_CLR;
   ctx.fillRect(0, 0, W, H);
 
   const b = _resolve(gridDataB);
@@ -95,7 +103,7 @@ export function drawAgreementMap(maskA, gridDataB) {
       const i = r * _COLS + c;
       const a = maskA[i] ?? 0;
       const bv = b[i];
-      ctx.fillStyle = a === bv ? STATE_COLOR[bv] : "#ef4444";
+      ctx.fillStyle = a === bv ? AGREE_COLOR[bv] : DISAGREE_CLR;
       ctx.fillRect(c * _CELL, r * _CELL, _CELL, _CELL);
     }
   }
@@ -226,12 +234,12 @@ h2{font-size:15px;font-weight:600;color:#334155;margin:32px 0 10px;padding-botto
 .param-unit{font-size:12px;font-weight:400;color:#64748b}
 
 /* DICE section */
-.dice-header{background:#111827;color:#f9fafb;text-align:center;padding:14px;border-radius:8px 8px 0 0;font-weight:700;font-size:14px;letter-spacing:.02em}
+.dice-header{background:#0f0f0f;color:#e0e0e0;text-align:center;padding:14px;border-radius:8px 8px 0 0;font-weight:700;font-size:14px;letter-spacing:.02em}
 .dice-panels{display:flex;gap:0;border:1px solid #e2e8f0;border-top:none;border-radius:0 0 8px 8px;overflow:hidden}
-.dice-panel{flex:1;display:flex;flex-direction:column;align-items:center;background:#0f172a}
-.dice-panel+.dice-panel{border-left:1px solid #1e293b}
-.dice-panel .label{color:#94a3b8;font-size:11px;font-weight:600;text-align:center;padding:8px 4px 4px;background:#0f172a;width:100%}
-.dice-panel img{width:100%;display:block;object-fit:contain;background:#111827}
+.dice-panel{flex:1;display:flex;flex-direction:column;align-items:center;background:#0f0f0f}
+.dice-panel+.dice-panel{border-left:1px solid #222}
+.dice-panel .label{color:#888;font-size:11px;font-weight:600;text-align:center;padding:8px 4px 4px;background:#0f0f0f;width:100%}
+.dice-panel img{width:100%;display:block;object-fit:contain;background:#0f0f0f}
 .dice-legend{display:flex;gap:18px;flex-wrap:wrap;justify-content:center;align-items:center;padding:10px 0;border:1px solid #e2e8f0;border-top:none;border-radius:0 0 8px 8px;background:#f8fafc;margin-top:-8px}
 .legend-item{display:flex;align-items:center;gap:6px;font-size:12px;color:#374151}
 .legend-swatch{width:14px;height:14px;border-radius:2px;flex-shrink:0}
@@ -326,11 +334,11 @@ tr:last-child td{border-bottom:none}
     </div>
   </div>
   <div class="dice-legend">
-    <div class="legend-item"><div class="legend-swatch" style="background:#22c55e"></div> Healthy (agree)</div>
-    <div class="legend-item"><div class="legend-swatch" style="background:#d97706"></div> Infected (agree)</div>
-    <div class="legend-item"><div class="legend-swatch" style="background:#78350f"></div> Necrotic (agree)</div>
-    <div class="legend-item"><div class="legend-swatch" style="background:#ef4444"></div> Disagree</div>
-    <div class="legend-item"><div class="legend-swatch" style="background:#111827;border:1px solid #e2e8f0"></div> Background</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:#368626"></div> Healthy (agree)</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:#e8da16"></div> Infected (agree)</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:#783c14"></div> Necrotic (agree)</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:#dc3232"></div> Disagree</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:#0f0f0f;border:1px solid #e2e8f0"></div> Background</div>
     <div style="font-size:11px;color:#94a3b8;margin-left:8px">Matching pixels shown in class color · Red = disagreement</div>
   </div>
 
