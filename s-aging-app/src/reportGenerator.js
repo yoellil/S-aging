@@ -54,25 +54,28 @@ function _classifyHSVPhoto(R, G, B) {
     if (h < 0) h += 360;
   }
 
-  // Check dark cores BEFORE the saturation-background gate:
-  // dark lesion interiors are low-saturation but are NOT background.
-  if (v < 0.28 && s > 0.03) return 2; // necrotic dark core
+  // Dark lesion cores — check BEFORE saturation gate so low-chroma dark tissue
+  // isn't discarded as background before it can be classified as necrotic.
+  if (v < 0.28 && s > 0.03) return 2;
 
-  // Near-gray (not dark enough for above) → background
-  if (s < 0.07) return -1;
+  // Truly achromatic (pure gray / white glare) → background
+  if (s < 0.05) return -1;
 
-  // Brown necrotic tissue — Fusarium / advanced Sigatoka (also catches reddish-brown h>340)
+  // Warm brown / tan / ashen necrotic — covers both saturated brown (Fusarium) AND
+  // the pale gray-beige oval lesion centers of Black Sigatoka (s as low as 0.06).
+  // Priority over yellow: brownish-yellow transitions in this hue range are necrotic.
   if ((h >= 5 && h < 50) || h > 340) {
-    if (s > 0.15 && v < 0.78) return 2;
+    if (s > 0.06 && v < 0.88) return 2;
   }
 
-  // Purple / violet necrotic — Black Sigatoka characteristic lesion color
-  if (h >= 240 && h <= 340 && s > 0.08 && v < 0.78) return 2;
+  // Purple / violet necrotic — Black Sigatoka dark violet lesions
+  if (h >= 240 && h <= 340 && s > 0.08 && v < 0.80) return 2;
 
-  // Yellow infected halos
-  if (h >= 22 && h < 75 && s > 0.12 && v > 0.20) return 1;
+  // Yellow infected halos (bright, saturated yellow — s raised to 0.15 to keep
+  // dull brownish-yellow from escaping the warm-necrotic check above)
+  if (h >= 22 && h < 75 && s > 0.15 && v > 0.22) return 1;
 
-  // Green healthy — wide range covers blue-green banana leaf tissue
+  // Green healthy — wide hue range for blue-green banana leaf tissue
   if (h >= 65 && h <= 185 && s > 0.10 && v > 0.12) return 0;
 
   return -1;
