@@ -164,6 +164,25 @@ export function drawSimulatedGrid(gridData) {
   return _drawGrid(gridData).toDataURL("image/png");
 }
 
+// Rotate a dataURL image 90° CCW — used when the source photo is portrait so the
+// SCA grid (always landscape) can be displayed upright to match the photo panels.
+function _rotateCCW(dataURL) {
+  return new Promise(resolve => {
+    const img = new Image();
+    img.onload = () => {
+      const W = img.naturalWidth, H = img.naturalHeight;
+      const canvas = document.createElement("canvas");
+      canvas.width = H; canvas.height = W;
+      const ctx = canvas.getContext("2d");
+      ctx.translate(0, W);
+      ctx.rotate(-Math.PI / 2);
+      ctx.drawImage(img, 0, 0);
+      resolve(canvas.toDataURL("image/png"));
+    };
+    img.src = dataURL;
+  });
+}
+
 // Render the full photo with per-pixel HSV classification coloring.
 // Shows the same orientation as the original photo (no rotation, no oval).
 // Pixels too dark/bright/desaturated to classify show as near-black.
@@ -315,12 +334,19 @@ export async function generateReportHTML({
   // between them reflects real classification differences rather than ~1.0 self-comparison.
   const photoMask = uploadedImgSrc ? await _computePhotoMask(uploadedImgSrc) : null;
 
-  // Generate 2-D grid images
-  const photoHSVImg    = uploadedImgSrc ? await _drawPhotoHSVImage(uploadedImgSrc) : null;
-  const simGridImg     = frame0GridData ? drawSimulatedGrid(frame0GridData) : null;
-  const agreementImg   = (photoMask && frame0GridData) ? drawAgreementMap(photoMask, frame0GridData) : null;
-  const perClass       = computePerClassDice(photoMask, frame0GridData);
-  const chartB64       = drawProgressionChart(frames);
+  // Detect portrait so we can rotate the SCA grid panels to match photo orientation
+  const isPortrait = uploadedImgSrc
+    ? await new Promise(res => { const i = new Image(); i.onload = () => res(i.naturalHeight > i.naturalWidth); i.src = uploadedImgSrc; })
+    : false;
+
+  // Generate 2-D grid images; rotate sim + agreement 90° CCW when photo is portrait
+  const photoHSVImg        = uploadedImgSrc ? await _drawPhotoHSVImage(uploadedImgSrc) : null;
+  const simGridRaw         = frame0GridData ? drawSimulatedGrid(frame0GridData) : null;
+  const agreementRaw       = (photoMask && frame0GridData) ? drawAgreementMap(photoMask, frame0GridData) : null;
+  const simGridImg         = (isPortrait && simGridRaw)   ? await _rotateCCW(simGridRaw)   : simGridRaw;
+  const agreementImg       = (isPortrait && agreementRaw) ? await _rotateCCW(agreementRaw) : agreementRaw;
+  const perClass           = computePerClassDice(photoMask, frame0GridData);
+  const chartB64           = drawProgressionChart(frames);
 
   const fmt = v => typeof v === "number" ? v.toFixed(3) : "N/A";
   const pct = v => typeof v === "number" ? `${(v * 100).toFixed(1)}%` : "N/A";
