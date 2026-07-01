@@ -28,17 +28,23 @@ const AGREE_COLOR  = ["#368626", "#e8da16", "#783c14"]; // same: agree = class c
 const DISAGREE_CLR = "#dc3232";
 const BG_CLR       = "#0f0f0f";
 
-// ── HSV classifier matching dice.py exactly ───────────────────────────────────
+// ── HSV classifier for real leaf photos ───────────────────────────────────────
+// Tuned for actual camera images, NOT the SCA grid palette colors.
 // Returns: -1=background, 0=healthy, 1=infected, 2=necrotic
+//
+// Key differences from dice.py (which targets SCA grid colors):
+//   • Green extended to h 60–185 to catch blue-green/teal banana leaf tissue
+//   • Lower green saturation floor (0.10) for muted/weathered leaf surfaces
+//   • Purple range added (h ≥ 240) for Black Sigatoka's violet-black lesions
+//   • Brown range widened (h 5–50, v < 0.75) for Fusarium necrotic tissue
+//   • Classification is priority-ordered: necrotic → infected → healthy → background
 function _classifyHSVPhoto(R, G, B) {
   const brightness = (R + G + B) / 3;
-  // Tight floor/ceiling: only exclude truly-black or truly-white pixels as background.
-  // _inLeaf already excludes non-leaf cells; dark necrotic tissue must reach isDark check.
-  if (brightness < 8 || brightness > 240) return -1;
+  if (brightness < 8 || brightness > 242) return -1;
   const rn = R / 255, gn = G / 255, bn = B / 255;
   const mx = Math.max(rn, gn, bn), mn = Math.min(rn, gn, bn);
   const delta = mx - mn;
-  if (mx > 0 && delta / mx < 0.08) return -1; // low-sat = background
+  if (mx > 0 && delta / mx < 0.07) return -1; // near-gray / low-saturation = background
   let h = 0;
   if (delta > 0.01) {
     if      (mx === rn) h = 60 * (((gn - bn) / delta) % 6);
@@ -48,13 +54,21 @@ function _classifyHSVPhoto(R, G, B) {
   }
   const s = mx > 0 ? delta / mx : 0;
   const v = mx;
-  const isGreen  = h >= 70 && h <= 160 && s > 0.15;
-  const isYellow = h >= 25 && h < 80   && s > 0.10 && v > 0.25 && !isGreen;
-  const isBrown  = h >= 10 && h < 45   && s > 0.20 && v < 0.65;
-  const isDark   = v < 0.25 && s > 0.05;
-  if (isDark || isBrown) return 2;
+
+  // Necrotic first — avoids dark-green or dark-yellow bleeding into other classes
+  const isDark   = v < 0.28 && s > 0.04;
+  const isBrown  = h >= 5  && h <  50 && s > 0.15 && v < 0.75; // Fusarium brown necrosis
+  const isPurple = h >= 240            && s > 0.10 && v < 0.75; // Black Sigatoka violet lesions
+  if (isDark || isBrown || isPurple) return 2;
+
+  // Infected yellow — keep below h=75 so it doesn't bleed into green
+  const isYellow = h >= 22 && h < 75 && s > 0.12 && v > 0.20;
   if (isYellow) return 1;
-  if (isGreen)  return 0;
+
+  // Healthy green — wider hue range catches blue-green banana leaf tissue
+  const isGreen = h >= 65 && h <= 185 && s > 0.10 && v > 0.12;
+  if (isGreen) return 0;
+
   return -1;
 }
 
