@@ -44,7 +44,8 @@ function _classifyHSVPhoto(R, G, B) {
   const rn = R / 255, gn = G / 255, bn = B / 255;
   const mx = Math.max(rn, gn, bn), mn = Math.min(rn, gn, bn);
   const delta = mx - mn;
-  if (mx > 0 && delta / mx < 0.07) return -1; // near-gray / low-saturation = background
+  const s = mx > 0 ? delta / mx : 0;
+  const v = mx;
   let h = 0;
   if (delta > 0.01) {
     if      (mx === rn) h = 60 * (((gn - bn) / delta) % 6);
@@ -52,22 +53,27 @@ function _classifyHSVPhoto(R, G, B) {
     else                h = 60 * ((rn - gn) / delta + 4);
     if (h < 0) h += 360;
   }
-  const s = mx > 0 ? delta / mx : 0;
-  const v = mx;
 
-  // Necrotic first — avoids dark-green or dark-yellow bleeding into other classes
-  const isDark   = v < 0.28 && s > 0.04;
-  const isBrown  = h >= 5  && h <  50 && s > 0.15 && v < 0.75; // Fusarium brown necrosis
-  const isPurple = h >= 240            && s > 0.10 && v < 0.75; // Black Sigatoka violet lesions
-  if (isDark || isBrown || isPurple) return 2;
+  // Check dark cores BEFORE the saturation-background gate:
+  // dark lesion interiors are low-saturation but are NOT background.
+  if (v < 0.28 && s > 0.03) return 2; // necrotic dark core
 
-  // Infected yellow — keep below h=75 so it doesn't bleed into green
-  const isYellow = h >= 22 && h < 75 && s > 0.12 && v > 0.20;
-  if (isYellow) return 1;
+  // Near-gray (not dark enough for above) → background
+  if (s < 0.07) return -1;
 
-  // Healthy green — wider hue range catches blue-green banana leaf tissue
-  const isGreen = h >= 65 && h <= 185 && s > 0.10 && v > 0.12;
-  if (isGreen) return 0;
+  // Brown necrotic tissue — Fusarium / advanced Sigatoka (also catches reddish-brown h>340)
+  if ((h >= 5 && h < 50) || h > 340) {
+    if (s > 0.15 && v < 0.78) return 2;
+  }
+
+  // Purple / violet necrotic — Black Sigatoka characteristic lesion color
+  if (h >= 240 && h <= 340 && s > 0.08 && v < 0.78) return 2;
+
+  // Yellow infected halos
+  if (h >= 22 && h < 75 && s > 0.12 && v > 0.20) return 1;
+
+  // Green healthy — wide range covers blue-green banana leaf tissue
+  if (h >= 65 && h <= 185 && s > 0.10 && v > 0.12) return 0;
 
   return -1;
 }
