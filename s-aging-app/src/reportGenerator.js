@@ -164,6 +164,28 @@ export function drawSimulatedGrid(gridData) {
   return _drawGrid(gridData).toDataURL("image/png");
 }
 
+// Render the photo's HSV classification as a colored grid (same style as sim grid).
+// -1 (background/unclassifiable pixels) render as near-black inside the ellipse.
+function drawPhotoHSVGrid(photoMask) {
+  const W = _COLS * _CELL, H = _ROWS * _CELL;
+  const canvas = document.createElement("canvas");
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext("2d");
+
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, W, H);
+
+  for (let r = 0; r < _ROWS; r++) {
+    for (let c = 0; c < _COLS; c++) {
+      if (!_inLeaf(r, c)) continue;
+      const v = photoMask[r * _COLS + c];
+      ctx.fillStyle = v < 0 ? BG_CLR : STATE_COLOR[v];
+      ctx.fillRect(c * _CELL, r * _CELL, _CELL, _CELL);
+    }
+  }
+  return canvas.toDataURL("image/png");
+}
+
 // Agreement map: class color = agree, red = disagree, near-black = background
 // Matches dice.py: outside-ellipse cells stay background; inside cells
 // that agree → class color, disagree → DISAGREE_CLR (both must be foreground).
@@ -273,6 +295,7 @@ export async function generateReportHTML({
   const photoMask = uploadedImgSrc ? await _computePhotoMask(uploadedImgSrc) : null;
 
   // Generate 2-D grid images
+  const photoHSVImg    = photoMask ? drawPhotoHSVGrid(photoMask) : null;
   const simGridImg     = frame0GridData ? drawSimulatedGrid(frame0GridData) : null;
   const agreementImg   = (photoMask && frame0GridData) ? drawAgreementMap(photoMask, frame0GridData) : null;
   const perClass       = computePerClassDice(photoMask, frame0GridData);
@@ -407,6 +430,12 @@ tr:last-child td{border-bottom:none}
       ${uploadedImgSrc
         ? `<img src="${uploadedImgSrc}" alt="Original leaf photo" style="max-height:320px;object-fit:contain"/>`
         : `<div style="height:200px;display:flex;align-items:center;justify-content:center;color:#475569;font-size:12px">No image uploaded</div>`}
+    </div>
+    <div class="dice-panel">
+      <div class="label">Original (HSV Classification)</div>
+      ${photoHSVImg
+        ? `<img src="${photoHSVImg}" alt="Photo HSV classification"/>`
+        : `<div style="height:200px;display:flex;align-items:center;justify-content:center;color:#475569;font-size:12px">No HSV data</div>`}
     </div>
     <div class="dice-panel">
       <div class="label">Simulated (Month 1 — Initial Extraction)</div>
