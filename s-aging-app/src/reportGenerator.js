@@ -32,7 +32,9 @@ const BG_CLR       = "#0f0f0f";
 // Returns: -1=background, 0=healthy, 1=infected, 2=necrotic
 function _classifyHSVPhoto(R, G, B) {
   const brightness = (R + G + B) / 3;
-  if (brightness < 25 || brightness > 210) return -1;
+  // Lower floor vs dice.py (25→10): dark necrotic tissue (brightness 10-25) must not
+  // become background before the isDark check runs. _inLeaf already guards non-leaf cells.
+  if (brightness < 10 || brightness > 230) return -1;
   const rn = R / 255, gn = G / 255, bn = B / 255;
   const mx = Math.max(rn, gn, bn), mn = Math.min(rn, gn, bn);
   const delta = mx - mn;
