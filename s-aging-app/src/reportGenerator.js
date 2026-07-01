@@ -58,14 +58,16 @@ function _classifyHSVPhoto(R, G, B) {
   // isn't discarded as background before it can be classified as necrotic.
   if (v < 0.28 && s > 0.03) return 2;
 
-  // Truly achromatic (pure gray / white glare) → background
-  if (s < 0.05) return -1;
+  // Truly achromatic (pure white glare / neutral shadow) → background
+  if (s < 0.04) return -1;
 
-  // Warm brown / tan / ashen necrotic — covers both saturated brown (Fusarium) AND
-  // the pale gray-beige oval lesion centers of Black Sigatoka (s as low as 0.06).
-  // Priority over yellow: brownish-yellow transitions in this hue range are necrotic.
+  // Warm/brown/tan/ashen necrotic — two sub-thresholds:
+  //   1. Clear brown/tan: higher saturation, any dark-to-moderate brightness
+  //   2. Pale ashen: very low saturation (s 0.04–0.06) warm-gray oval lesion centers,
+  //      capped at v < 0.85 to exclude bright white highlights on the leaf surface
   if ((h >= 5 && h < 50) || h > 340) {
     if (s > 0.06 && v < 0.88) return 2;
+    if (s > 0.04 && v > 0.30 && v < 0.85) return 2;
   }
 
   // Purple / violet necrotic — Black Sigatoka dark violet lesions
