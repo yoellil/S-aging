@@ -2236,18 +2236,7 @@ function SimulationPage({ config, devMode }) {
               )}
             </div>
           </div>
-          <div className="sim-header-right">
-            {simState === "complete" && imageData && (
-              <button
-                className="play-btn"
-                onClick={() => hsvSectionRef.current?.scrollIntoView({ behavior: "smooth" })}
-                style={{ display: "flex", alignItems: "center", gap: 6 }}
-              >
-                <ScanEye size={14} />
-                See HSV Accuracy
-              </button>
-            )}
-          </div>
+          <div className="sim-header-right" />
         </div>
 
         <div className="sim-grid">
@@ -2258,17 +2247,28 @@ function SimulationPage({ config, devMode }) {
                 <button key={t} className={`tab ${activeTab === t ? "active" : ""}`}
                   onClick={() => setActiveTab(t)}>{label}</button>
               ))}
-              {activeTab === "leaf" && (
-                <button
-                  className="play-btn"
-                  style={{ marginLeft: "auto" }}
-                  disabled={simState !== "complete"}
-                  onClick={handlePlayPause}
-                >
-                  {playing ? <Pause size={12} /> : <Play size={12} />}
-                  {playing ? "Pause" : "Play"}
-                </button>
-              )}
+              <div style={{ marginLeft: "auto", display: "flex", gap: 6, alignItems: "center" }}>
+                {activeTab === "leaf" && (
+                  <button
+                    className="play-btn"
+                    disabled={simState !== "complete"}
+                    onClick={handlePlayPause}
+                  >
+                    {playing ? <Pause size={12} /> : <Play size={12} />}
+                    {playing ? "Pause" : "Play"}
+                  </button>
+                )}
+                {simState === "complete" && imageData && (
+                  <button
+                    className="play-btn"
+                    onClick={() => hsvSectionRef.current?.scrollIntoView({ behavior: "smooth" })}
+                    style={{ display: "flex", alignItems: "center", gap: 6 }}
+                  >
+                    <ScanEye size={14} />
+                    See HSV Accuracy
+                  </button>
+                )}
+              </div>
             </div>
 
             <div className="sim-viewer">
