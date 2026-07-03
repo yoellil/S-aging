@@ -2086,6 +2086,8 @@ function SimulationPage({ config, devMode }) {
       stageDesc: finalStage.desc,
       diseaseName: dName,
       detections: detections ?? null,
+      imgWidth: imgWidth ?? null,
+      imgHeight: imgHeight ?? null,
     });
     downloadReport(html, `saging-${dName.toLowerCase().replace(/\s+/g, "-")}-${Date.now()}.html`);
   }, [disease, temp, rh, density, months, imageData, imageDataURL, maskGrid]);
@@ -2149,10 +2151,10 @@ function SimulationPage({ config, devMode }) {
     if (!frame1?.gridData) return;
 
     (async () => {
-      const [photoMask, isPortrait] = await Promise.all([
-        computePhotoMask(imgSrc),
-        new Promise(res => { const i = new Image(); i.onload = () => res(i.naturalHeight > i.naturalWidth); i.src = imgSrc; }),
-      ]);
+      // Use imgHeight/imgWidth from the <img> element (EXIF-corrected, same as what user sees)
+      // rather than re-loading the image and hoping EXIF is applied consistently in canvas.
+      const isPortrait = (imgHeight ?? 0) > (imgWidth ?? 0);
+      const photoMask = await computePhotoMask(imgSrc, isPortrait);
       if (cancelled) return;
       const simGridRaw = drawSimulatedGrid(frame1.gridData);
       const agreementRaw = drawAgreementMap(photoMask, frame1.gridData);

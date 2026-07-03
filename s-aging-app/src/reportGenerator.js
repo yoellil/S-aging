@@ -132,12 +132,15 @@ function _classifyHSVPhoto(R, G, B) {
 // Classify the uploaded photo at SCA grid resolution (160×100) using dice.py HSV.
 // Returns Int8Array[16000] with -1=background, 0/1/2=class.
 // Portrait images are CW-rotated so their long axis maps to grid columns.
-async function _computePhotoMask(imgDataURL) {
+// isPortraitHint: pass the caller's ground-truth portrait flag (from imgRef
+// naturalWidth/Height) so this fn doesn't need to re-detect from the data URL,
+// which can fail when EXIF metadata is inconsistently applied during canvas load.
+async function _computePhotoMask(imgDataURL, isPortraitHint) {
   return new Promise(resolve => {
     const img = new Image();
     img.onload = () => {
       const srcW = img.naturalWidth, srcH = img.naturalHeight;
-      const isPortrait = srcH > srcW;
+      const isPortrait = isPortraitHint ?? (srcH > srcW);
       const canvas = document.createElement("canvas");
       let sW, sH;
       if (isPortrait) {
@@ -394,21 +397,25 @@ export async function generateReportHTML({
   uploadedImage, maskGrid, frame0GridData,
   stageLabel, stageDesc, diseaseName,
   detections,
+  imgWidth, imgHeight,   // natural dimensions from the <img> element — EXIF-corrected ground truth
 }) {
   // Restore full data URL if only the raw base64 was stored
   const uploadedImgSrc = uploadedImage
     ? (uploadedImage.startsWith("data:") ? uploadedImage : `data:image/png;base64,${uploadedImage}`)
     : null;
 
-  // Classify the raw photo pixels with dice.py HSV (independent of YOLO maskGrid).
-  // This gives honest Dice scores — photo HSV ≠ YOLO detection, so disagreement
-  // between them reflects real classification differences rather than ~1.0 self-comparison.
-  const photoMask = uploadedImgSrc ? await _computePhotoMask(uploadedImgSrc) : null;
+  // Use the caller-supplied dimensions (from imgRef.current.naturalWidth/Height) as the
+  // ground truth for portrait detection. Falling back to a new Image() load is unreliable
+  // because EXIF rotation handling varies when the data URL MIME type doesn't match the bytes.
+  const isPortrait = imgHeight != null && imgWidth != null
+    ? imgHeight > imgWidth
+    : uploadedImgSrc
+      ? await new Promise(res => { const i = new Image(); i.onload = () => res(i.naturalHeight > i.naturalWidth); i.src = uploadedImgSrc; })
+      : false;
 
-  // Detect portrait so we can rotate the SCA grid panels to match photo orientation
-  const isPortrait = uploadedImgSrc
-    ? await new Promise(res => { const i = new Image(); i.onload = () => res(i.naturalHeight > i.naturalWidth); i.src = uploadedImgSrc; })
-    : false;
+  // Classify the raw photo pixels with dice.py HSV (independent of YOLO maskGrid).
+  // Pass the ground-truth portrait flag so _computePhotoMask doesn't re-detect it.
+  const photoMask = uploadedImgSrc ? await _computePhotoMask(uploadedImgSrc, isPortrait) : null;
 
   // Generate 2-D grid images; rotate sim + agreement 90° CCW when photo is portrait
   const photoHSVImg        = uploadedImgSrc ? await _drawPhotoHSVImage(uploadedImgSrc) : null;
@@ -674,7 +681,7 @@ tr:last-child td{border-bottom:none}
 }
 
 // Named exports for helpers needed by the web app's live HSV comparison panel
-export const computePhotoMask  = _computePhotoMask;
+export const computePhotoMask  = (url, isPortraitHint) => _computePhotoMask(url, isPortraitHint);
 export const drawPhotoHSVImage = _drawPhotoHSVImage;
 export const rotateCCW         = _rotateCCW;
 
