@@ -28,6 +28,52 @@ const AGREE_COLOR  = ["#368626", "#e8da16", "#783c14"]; // same: agree = class c
 const DISAGREE_CLR = "#dc3232";
 const BG_CLR       = "#0f0f0f";
 
+// ── Diagnostic tips (mirrored from ExplainabilityDashboard.jsx) ───────────────
+const _EARLY_TIPS = [
+  { title: "Clean Your Tools", body: "Early signs of disease have been detected. Before moving to the next plant, wipe all cutting tools with rubbing alcohol (isopropyl alcohol, 70%) or a bleach-and-water mix (1 part bleach to 9 parts water). This stops the disease from hitching a ride to healthy plants." },
+  { title: "Apply a Protective Spray", body: "Coat healthy plant parts — especially new leaves and the base of the main stem (pseudostem) — with a protective fungicide such as copper spray or mancozeb. Think of it as sunscreen for the plant: it sits on the surface and blocks disease spores from getting in." },
+  { title: "Monitor Weather Conditions", body: "Record the daily temperature and air humidity. Disease spreads much faster when humidity stays above 70% (for Black Sigatoka) or above 75% (for Fusarium Wilt TR4). Use these readings as your signal to spray or take action before the disease gets worse." },
+];
+
+const _SCENARIOS = {
+  "single-fusarium": {
+    label: "Single Plant · Fusarium Wilt TR4 — Active Eradication",
+    severity: "critical",
+    steps: [
+      { title: "Kill the Plant at the Source", body: "Inject 10 mL of weed killer (glyphosate) directly into the main stem (pseudostem) about 30 cm from the ground. This shuts down the plant's internal water and food channels and stops the underground base (corm) from releasing more disease spores. Mark the spot and do not replant for at least 6 months." },
+      { title: "Destroy the Plant Where It Stands", body: "Once the weed killer has taken effect (wait 48–72 hours), chop the plant down on the spot and cover all the pieces with a thick layer of quicklime (about 15 cm). Do not carry plant parts to another area — digging up the underground base (corm) can scatter long-lasting disease spores (chlamydospores) into clean soil nearby." },
+      { title: "Disinfect Tools and Footwear", body: "Soak all cutting tools in bleach solution (1 part bleach to 19 parts water) for 30 minutes. Scrub boots with soap, then step through a disinfectant footbath (10% bleach) before leaving the area. Note the exact location on a map and report to the farm manager right away." },
+    ],
+  },
+  "single-sigatoka": {
+    label: "Single Plant · Black Sigatoka — Sanitation Protocol",
+    severity: "warning",
+    steps: [
+      { title: "Remove Infected Leaves", body: "Find and cut off all leaves with Stage 3 or worse damage — look for dark brown streaks that have merged into large dead (necrotic) patches. Cut at the leaf stalk base (petiole), as close to the main stem (pseudostem) as possible. Always use a clean blade and avoid cutting through the middle of the leaf." },
+      { title: "Lay Cut Leaves Face-Down", body: "Place the removed leaves upside-down (spore side facing the soil) directly below the plant. This stops disease spores from being picked up by the wind and landing on healthy leaves. Spread them flat — do not stack or pile them up." },
+      { title: "Spray Remaining Healthy Leaves", body: "Apply a deep-acting fungicide (systemic triazole) — such as propiconazole or tebuconazole — to the still-healthy leaves as a leaf spray (foliar spray), mixed at 2 mL per liter of water. On your next spray cycle, switch to a different fungicide type (e.g., strobilurins) so the disease does not become resistant to one product." },
+    ],
+  },
+  "plantation-sigatoka": {
+    label: "Plantation · Black Sigatoka — Integrated Field Strategy",
+    severity: "warning",
+    steps: [
+      { title: "Thin Out Shoots and Leaves", body: "Cut off all young side shoots (suckers) that are shorter than 1 meter to open up the space between plants and let air flow through. Keep no more than 3 healthy leaves per plant at a time. Leaf-removal teams should always move in one direction across the rows so they do not carry disease spores back into areas they already cleaned." },
+      { title: "Rotate Your Fungicide Sprays", body: "Follow a 4-spray schedule, always switching between different fungicide types to slow down resistance (following FRAC resistance guidelines): rotate deep-acting fungicide group 3 (DMI), group 11 (strobilurins), and group 7 (SDHI) in turn. Spray in the early morning when wind is calm, and wait at least 21 days between each round of deep-acting sprays." },
+      { title: "Feed the Plants to Boost Resistance", body: "Mix potassium sulfate (K₂SO₄) at 3 kg per hectare into your regular fungicide spray. Banana plants with high potassium levels are naturally tougher against Black Sigatoka. Also add calcium and boron to your fertilizer routine to help strengthen the outer walls of plant cells." },
+    ],
+  },
+  "plantation-fusarium": {
+    label: "Plantation · Fusarium Wilt TR4 — Containment &amp; Replanting",
+    severity: "critical",
+    steps: [
+      { title: "Seal Off the Infected Area", body: "As soon as disease is confirmed, dig a trench around the outbreak area (10 meters out from the sick plants, 50 cm deep, 30 cm wide) and fill it with quicklime. Put up clear warning signs around the zone. Set up one entry-and-exit cleaning station where all workers and equipment must be disinfected with a bleach footbath before passing through." },
+      { title: "Treat Nearby Plants with Protective Microbes", body: "Water the root zone (rhizosphere) of nearby healthy plants with a solution of a beneficial soil fungus called Trichoderma harzianum — apply about 5 liters per plant. This helpful fungus naturally competes with and blocks the Fusarium disease fungus (Foc TR4) in the soil. Repeat this treatment once a month for 3 months." },
+      { title: "Replant with Disease-Resistant Varieties", body: "Let the soil rest for at least 12 months before replanting. When you do replant, choose only banana varieties that can resist TR4, such as GCTCV-219, Goldfinger, or wild-cross hybrids (Musa balbisiana). Keep clear records of which areas were replanted so they can be watched closely over time." },
+    ],
+  },
+};
+
 // ── HSV classifier for real leaf photos ───────────────────────────────────────
 // Tuned for actual camera images, NOT the SCA grid palette colors.
 // Returns: -1=background, 0=healthy, 1=infected, 2=necrotic
@@ -380,6 +426,21 @@ export async function generateReportHTML({
   const isFW = disease === "fusarium_wilt";
   const generatedAt = new Date().toLocaleString();
 
+  // Diagnostic tips — derive scenario from disease + density (high density → plantation)
+  const _scenarioMode  = density === "high" ? "plantation" : "single";
+  const _scenarioKey   = `${_scenarioMode}-${isFW ? "fusarium" : "sigatoka"}`;
+  const _isEarlyOnset  = months <= 10;
+  const _scenario      = _SCENARIOS[_scenarioKey];
+  const _tipSeverity   = _isEarlyOnset ? "early" : _scenario.severity;
+  const _tipBadgeText  = _isEarlyOnset ? `Early Onset — Monitoring · ${diseaseName}` : `${_scenario.label}`;
+  const _tipSteps      = _isEarlyOnset ? _EARLY_TIPS : _scenario.steps;
+  const _tipCardClass  = _isEarlyOnset ? "" : (_tipSeverity === "critical" ? " critical" : " warning");
+  const tipsHTML = _tipSteps.map(step => `
+    <div class="tip-card${_tipCardClass}">
+      <div class="tip-title">${step.title}</div>
+      <div class="tip-body">${step.body}</div>
+    </div>`).join("");
+
   const tableRows = frames
     .filter((f, i) => i === 0 || i === frames.length - 1 || f.month % 5 === 0)
     .map(f => `<tr>
@@ -447,6 +508,13 @@ tr:last-child td{border-bottom:none}
 .conf-bar{height:100%;border-radius:99px;background:linear-gradient(90deg,#16a34a,#22c55e)}
 .conf-pct{font-size:11px;color:#64748b}
 .footer{margin-top:40px;padding-top:14px;border-top:1px solid #e2e8f0;font-size:11px;color:#94a3b8;display:flex;justify-content:space-between}
+.tip-badge{display:inline-block;padding:2px 10px;border-radius:99px;font-size:11px;color:#64748b;background:#f1f5f9;border:1px solid #e2e8f0;margin-bottom:10px}
+.tip-card{padding:12px 16px 12px 20px;border-left:3px solid #16a34a;background:#f0fdf4;border-radius:0 6px 6px 0;margin-bottom:8px}
+.tip-card.warning{border-left-color:#d97706;background:#fffbeb}
+.tip-card.critical{border-left-color:#dc2626;background:#fff5f5}
+.tip-title{font-size:13px;font-weight:700;color:#0f172a;margin-bottom:4px}
+.tip-body{font-size:12px;color:#475569;line-height:1.65}
+.hsv-explain{font-size:13px;color:#475569;line-height:1.7;margin-bottom:14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px 16px}
 @media print{body{font-size:12px}.page{padding:20px}}
 </style>
 </head>
@@ -484,51 +552,6 @@ tr:last-child td{border-bottom:none}
       <div class="param-label">Months Simulated</div>
       <div class="param-val">${months}</div>
     </div>
-  </div>
-
-  <h2>Dice Similarity — Photo HSV vs Initial SCA Extraction (Month 1)</h2>
-  ${perClass ? `
-  <div class="dice-header">
-    Dice Similarity Test &nbsp;—&nbsp;
-    Infected: ${fmt(perClass.infected)} &nbsp;|&nbsp;
-    Necrotic: ${fmt(perClass.necrotic)} &nbsp;|&nbsp;
-    Healthy: ${fmt(perClass.healthy)} &nbsp;|&nbsp;
-    Mean: ${fmt(perClass.mean)}
-  </div>` : `<div class="dice-header">Dice Similarity Test — No detection mask available</div>`}
-
-  <div class="dice-panels">
-    <div class="dice-panel">
-      <div class="label">Original</div>
-      ${uploadedImgSrc
-        ? `<img src="${uploadedImgSrc}" alt="Original leaf photo" style="max-height:320px;object-fit:contain"/>`
-        : `<div style="height:200px;display:flex;align-items:center;justify-content:center;color:#475569;font-size:12px">No image uploaded</div>`}
-    </div>
-    <div class="dice-panel">
-      <div class="label">Original (HSV Classification)</div>
-      ${photoHSVImg
-        ? `<img src="${photoHSVImg}" alt="Photo HSV classification"/>`
-        : `<div style="height:200px;display:flex;align-items:center;justify-content:center;color:#475569;font-size:12px">No HSV data</div>`}
-    </div>
-    <div class="dice-panel">
-      <div class="label">Simulated (Month 1 — Initial Extraction)</div>
-      ${simGridImg
-        ? `<img src="${simGridImg}" alt="Simulation Month 1"/>`
-        : `<div style="height:200px;display:flex;align-items:center;justify-content:center;color:#475569;font-size:12px">No simulation data</div>`}
-    </div>
-    <div class="dice-panel">
-      <div class="label">Agreement Map</div>
-      ${agreementImg
-        ? `<img src="${agreementImg}" alt="Agreement map"/>`
-        : `<div style="height:200px;display:flex;align-items:center;justify-content:center;color:#475569;font-size:12px">No mask data</div>`}
-    </div>
-  </div>
-  <div class="dice-legend">
-    <div class="legend-item"><div class="legend-swatch" style="background:#368626"></div> Healthy (agree)</div>
-    <div class="legend-item"><div class="legend-swatch" style="background:#e8da16"></div> Infected (agree)</div>
-    <div class="legend-item"><div class="legend-swatch" style="background:#783c14"></div> Necrotic (agree)</div>
-    <div class="legend-item"><div class="legend-swatch" style="background:#dc3232"></div> Disagree</div>
-    <div class="legend-item"><div class="legend-swatch" style="background:#0f0f0f;border:1px solid #e2e8f0"></div> Background</div>
-    <div style="font-size:11px;color:#94a3b8;margin-left:8px">Matching pixels shown in class color · Red = disagreement</div>
   </div>
 
   <h2>Disease Progression Chart</h2>
@@ -584,6 +607,63 @@ tr:last-child td{border-bottom:none}
     }).join("\n    ")}
   </div>` : ""}
 
+  <h2>Diagnostic &amp; Management Tips</h2>
+  <div class="tip-badge">${_tipBadgeText}</div>
+  ${tipsHTML}
+
+  <h2>HSV Comparison — Original vs Simulated (Initial Extraction)</h2>
+  <div class="hsv-explain">
+    Each pixel of the original leaf photograph is independently classified using hue, saturation,
+    and value (HSV) thresholds — with no reference to the YOLO detection result. The resulting
+    class map is then compared against the SCA simulation at Month 1 (the initial extraction state
+    seeded by YOLO). The <strong>Agreement Map</strong> shows where both methods agree (class color)
+    and where they diverge (red). Dice scores measure per-class overlap: a score of 1.0 means
+    perfect agreement, 0.0 means no overlap. Background pixels are excluded from all counts.
+  </div>
+  ${perClass ? `
+  <div class="dice-header">
+    HSV Comparison Test &nbsp;—&nbsp;
+    Infected: ${fmt(perClass.infected)} &nbsp;|&nbsp;
+    Necrotic: ${fmt(perClass.necrotic)} &nbsp;|&nbsp;
+    Healthy: ${fmt(perClass.healthy)} &nbsp;|&nbsp;
+    Mean: ${fmt(perClass.mean)}
+  </div>` : `<div class="dice-header">HSV Comparison — No detection mask available</div>`}
+
+  <div class="dice-panels">
+    <div class="dice-panel">
+      <div class="label">Original</div>
+      ${uploadedImgSrc
+        ? `<img src="${uploadedImgSrc}" alt="Original leaf photo" style="max-height:320px;object-fit:contain"/>`
+        : `<div style="height:200px;display:flex;align-items:center;justify-content:center;color:#475569;font-size:12px">No image uploaded</div>`}
+    </div>
+    <div class="dice-panel">
+      <div class="label">Original (HSV Classification)</div>
+      ${photoHSVImg
+        ? `<img src="${photoHSVImg}" alt="Photo HSV classification"/>`
+        : `<div style="height:200px;display:flex;align-items:center;justify-content:center;color:#475569;font-size:12px">No HSV data</div>`}
+    </div>
+    <div class="dice-panel">
+      <div class="label">Simulated (Month 1 — Initial Extraction)</div>
+      ${simGridImg
+        ? `<img src="${simGridImg}" alt="Simulation Month 1"/>`
+        : `<div style="height:200px;display:flex;align-items:center;justify-content:center;color:#475569;font-size:12px">No simulation data</div>`}
+    </div>
+    <div class="dice-panel">
+      <div class="label">Agreement Map</div>
+      ${agreementImg
+        ? `<img src="${agreementImg}" alt="Agreement map"/>`
+        : `<div style="height:200px;display:flex;align-items:center;justify-content:center;color:#475569;font-size:12px">No mask data</div>`}
+    </div>
+  </div>
+  <div class="dice-legend">
+    <div class="legend-item"><div class="legend-swatch" style="background:#368626"></div> Healthy (agree)</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:#e8da16"></div> Infected (agree)</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:#783c14"></div> Necrotic (agree)</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:#dc3232"></div> Disagree</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:#0f0f0f;border:1px solid #e2e8f0"></div> Background</div>
+    <div style="font-size:11px;color:#94a3b8;margin-left:8px">Matching pixels shown in class color · Red = disagreement</div>
+  </div>
+
   <div class="footer">
     <span>S-Aging — Banana Disease Simulation System</span>
     <span>Generated ${generatedAt}</span>
@@ -592,6 +672,11 @@ tr:last-child td{border-bottom:none}
 </body>
 </html>`;
 }
+
+// Named exports for helpers needed by the web app's live HSV comparison panel
+export const computePhotoMask  = _computePhotoMask;
+export const drawPhotoHSVImage = _drawPhotoHSVImage;
+export const rotateCCW         = _rotateCCW;
 
 // Trigger browser download of the HTML string
 export function downloadReport(html, filename = "saging-report.html") {

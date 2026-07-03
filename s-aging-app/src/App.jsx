@@ -13,7 +13,7 @@ import Antigravity from "./Antigravity";
 import CurvedLoop from "./CurvedLoop";
 import { detectDisease, colorSegMask, combinedMask, warmupSession } from "./detection";
 import { streamSimulation } from "./api";
-import { generateReportHTML, downloadReport } from "./reportGenerator";
+import { generateReportHTML, downloadReport, computePhotoMask, drawPhotoHSVImage, drawSimulatedGrid, drawAgreementMap, computePerClassDice, rotateCCW } from "./reportGenerator";
 import { saveSimulationLog } from "./profileApi";
 import { supabase } from "./utils/supabase";
 import AuthPage from "./AuthPage";
@@ -2029,6 +2029,9 @@ function SimulationPage({ config, devMode }) {
   const playRef = useRef(null);
   const cancelledRef = useRef(false);
   const hasSavedRef = useRef(false);
+  const hsvSectionRef = useRef(null);
+
+  const [hsvData, setHsvData] = useState(null);
 
   const isFW = disease === "fusarium_wilt";
   const diseaseName = isFW ? "Fusarium Wilt TR4" : "Black Sigatoka";
@@ -2137,6 +2140,34 @@ function SimulationPage({ config, devMode }) {
     };
   }, []); // run once on mount
 
+  // ── Compute HSV comparison once simulation finishes ───────────────────────
+  useEffect(() => {
+    if (simState !== "complete" || !imageData) return;
+    let cancelled = false;
+    const imgSrc = imageData.startsWith("data:") ? imageData : `data:image/png;base64,${imageData}`;
+    const frame1 = framesRef.current[1] ?? framesRef.current[0];
+    if (!frame1?.gridData) return;
+
+    (async () => {
+      const [photoMask, isPortrait] = await Promise.all([
+        computePhotoMask(imgSrc),
+        new Promise(res => { const i = new Image(); i.onload = () => res(i.naturalHeight > i.naturalWidth); i.src = imgSrc; }),
+      ]);
+      if (cancelled) return;
+      const simGridRaw = drawSimulatedGrid(frame1.gridData);
+      const agreementRaw = drawAgreementMap(photoMask, frame1.gridData);
+      const [photoHSVImg, simGridImg, agreementImg] = await Promise.all([
+        drawPhotoHSVImage(imgSrc),
+        isPortrait ? rotateCCW(simGridRaw) : Promise.resolve(simGridRaw),
+        isPortrait ? rotateCCW(agreementRaw) : Promise.resolve(agreementRaw),
+      ]);
+      if (cancelled) return;
+      setHsvData({ photoHSVImg, simGridImg, agreementImg, dice: computePerClassDice(photoMask, frame1.gridData) });
+    })();
+
+    return () => { cancelled = true; };
+  }, [simState, imageData]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Play-through timer (only after all frames loaded) ─────────────────────
   useEffect(() => {
     clearInterval(playRef.current);
@@ -2206,15 +2237,14 @@ function SimulationPage({ config, devMode }) {
             </div>
           </div>
           <div className="sim-header-right">
-            {simState === "complete" && (
+            {simState === "complete" && imageData && (
               <button
                 className="play-btn"
-                onClick={handleDownloadReport}
-                title="Download simulation report as HTML"
+                onClick={() => hsvSectionRef.current?.scrollIntoView({ behavior: "smooth" })}
                 style={{ display: "flex", alignItems: "center", gap: 6 }}
               >
-                <FileDown size={14} />
-                Download Report
+                <ScanEye size={14} />
+                See HSV Accuracy
               </button>
             )}
           </div>
@@ -2593,6 +2623,116 @@ function SimulationPage({ config, devMode }) {
           onSeek={(t) => { setPlaying(false); setTimeStep(t); }}
           disabled={frames.length === 0}
         />
+
+        {/* ── HSV Comparison section (visible only after simulation completes) ── */}
+        {simState === "complete" && (
+          <div
+            ref={hsvSectionRef}
+            style={{
+              marginTop: 24,
+              background: "var(--bg)",
+              border: "1.5px solid var(--border)",
+              borderRadius: 12,
+              padding: "20px 20px 16px",
+            }}
+          >
+            {/* Section header */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14, flexWrap: "wrap", gap: 10 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{
+                  width: 28, height: 28, borderRadius: 8,
+                  background: "linear-gradient(135deg, var(--green-50), var(--teal-50))",
+                  border: "1.5px solid var(--green-100)",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  color: "var(--green)",
+                }}>
+                  <ScanEye size={14} />
+                </div>
+                <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>
+                  HSV Comparison — Original vs Simulated (Initial Extraction)
+                </span>
+              </div>
+              <button
+                className="play-btn"
+                onClick={handleDownloadReport}
+                style={{ display: "flex", alignItems: "center", gap: 6 }}
+              >
+                <FileDown size={14} />
+                Download Full Report
+              </button>
+            </div>
+
+            <p style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.65, marginBottom: 14 }}>
+              Each pixel of the original photo is independently classified using HSV thresholds —
+              without relying on the YOLO detection. The Agreement Map shows where both methods
+              agree (class color) and where they diverge (red). Dice scores measure per-class
+              overlap between raw HSV photo analysis and the initial SCA extraction (Month 1).
+            </p>
+
+            {!imageData ? (
+              <div style={{ fontSize: 13, color: "var(--text-muted)", padding: "20px 0", textAlign: "center" }}>
+                No image uploaded — HSV comparison requires an uploaded leaf photo.
+              </div>
+            ) : !hsvData ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "20px 0", color: "var(--text-muted)", fontSize: 13 }}>
+                <Loader size={16} style={{ animation: "spin 1s linear infinite" }} />
+                Computing HSV classification…
+              </div>
+            ) : (
+              <>
+                {/* Dice score summary row */}
+                {hsvData.dice && (
+                  <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 12, fontSize: 12, color: "var(--text-muted)", alignItems: "center" }}>
+                    <span style={{ fontWeight: 600 }}>Dice —</span>
+                    {[
+                      ["Healthy",  hsvData.dice.healthy],
+                      ["Infected", hsvData.dice.infected],
+                      ["Necrotic", hsvData.dice.necrotic],
+                      ["Mean",     hsvData.dice.mean],
+                    ].map(([label, val]) => (
+                      <span key={label}>{label}: <strong style={{ color: "var(--text)" }}>{val.toFixed(3)}</strong></span>
+                    ))}
+                  </div>
+                )}
+
+                {/* 4-panel grid */}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
+                  {[
+                    { label: "Original",              src: imageData.startsWith("data:") ? imageData : `data:image/png;base64,${imageData}` },
+                    { label: "Original (HSV)",         src: hsvData.photoHSVImg },
+                    { label: "Simulated (Month 1)",    src: hsvData.simGridImg },
+                    { label: "Agreement Map",          src: hsvData.agreementImg },
+                  ].map(({ label, src }) => (
+                    <div key={label} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", textAlign: "center" }}>{label}</div>
+                      <img
+                        src={src}
+                        alt={label}
+                        style={{ width: "100%", borderRadius: 6, border: "1px solid var(--border)", background: "#0f0f0f", objectFit: "contain", display: "block" }}
+                      />
+                    </div>
+                  ))}
+                </div>
+
+                {/* Legend */}
+                <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginTop: 10, fontSize: 11, color: "var(--text-muted)", alignItems: "center", justifyContent: "center" }}>
+                  {[
+                    { color: "#368626", label: "Healthy (agree)" },
+                    { color: "#e8da16", label: "Infected (agree)" },
+                    { color: "#783c14", label: "Necrotic (agree)" },
+                    { color: "#dc3232", label: "Disagree" },
+                    { color: "#0f0f0f", label: "Background", border: "1px solid #555" },
+                  ].map(({ color, label, border }) => (
+                    <div key={label} style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                      <div style={{ width: 12, height: 12, borderRadius: 2, background: color, border: border ?? "none", flexShrink: 0 }} />
+                      {label}
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
