@@ -1602,9 +1602,8 @@ function UploadPage({ onNavigate, setSimConfig, devMode, modelReady }) {
           className="analyze-btn"
           disabled={false}
           onClick={() => {
-            const imageData = uploadedImage?.url
-              ? uploadedImage.url.split(",")[1] ?? null
-              : null;
+            const imageDataURL = uploadedImage?.url ?? null; // full data URL, correct MIME type preserved
+            const imageData = imageDataURL ? imageDataURL.split(",")[1] ?? null : null; // raw base64 for backend
             setSimConfig({
               disease: selected, temp, rh, density, months: +duration,
               detections: detections ?? null,
@@ -1612,6 +1611,7 @@ function UploadPage({ onNavigate, setSimConfig, devMode, modelReady }) {
               imgWidth: imgRef.current?.naturalWidth ?? null,
               imgHeight: imgRef.current?.naturalHeight ?? null,
               imageData,
+              imageDataURL,
             });
             onNavigate("simulation");
           }}
@@ -2014,7 +2014,7 @@ const FW_PHASES = [
 function SimulationPage({ config, devMode }) {
   const { disease = "black_sigatoka", temp = 26, rh = 85, density = "medium", months = 30,
     detections = null, maskGrid = null, imgWidth = null, imgHeight = null,
-    imageData = null } = config || {};
+    imageData = null, imageDataURL = null } = config || {};
 
   // Streamed frames from FastAPI backend  (one per simulated month, 0-30)
   const [frames, setFrames] = useState([]);
@@ -2079,7 +2079,7 @@ function SimulationPage({ config, devMode }) {
       frames: allFrames,
       finalStats: lastFrame?.stats ?? {},
       envInfo: lastFrame?.env ?? {},
-      uploadedImage: imageData ?? null,
+      uploadedImage: imageDataURL ?? imageData ?? null,
       maskGrid: maskGrid ?? null,
       frame0GridData: frame1?.gridData ?? null,
       stageLabel: `${fusarium ? "Phase" : "Stage"} ${finalStage.num} — ${finalStage.name}`,
@@ -2088,7 +2088,7 @@ function SimulationPage({ config, devMode }) {
       detections: detections ?? null,
     });
     downloadReport(html, `saging-${dName.toLowerCase().replace(/\s+/g, "-")}-${Date.now()}.html`);
-  }, [disease, temp, rh, density, months, imageData, maskGrid]);
+  }, [disease, temp, rh, density, months, imageData, imageDataURL, maskGrid]);
 
   // ── Stream simulation frames from FastAPI backend on mount ────────────────
   useEffect(() => {
@@ -2142,9 +2142,9 @@ function SimulationPage({ config, devMode }) {
 
   // ── Compute HSV comparison once simulation finishes ───────────────────────
   useEffect(() => {
-    if (simState !== "complete" || !imageData) return;
+    if (simState !== "complete" || !imageDataURL) return;
     let cancelled = false;
-    const imgSrc = imageData.startsWith("data:") ? imageData : `data:image/png;base64,${imageData}`;
+    const imgSrc = imageDataURL; // full data URL with correct MIME type — EXIF rotation preserved
     const frame1 = framesRef.current[1] ?? framesRef.current[0];
     if (!frame1?.gridData) return;
 
@@ -2166,7 +2166,7 @@ function SimulationPage({ config, devMode }) {
     })();
 
     return () => { cancelled = true; };
-  }, [simState, imageData]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [simState, imageDataURL]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Play-through timer (only after all frames loaded) ─────────────────────
   useEffect(() => {
@@ -2258,7 +2258,7 @@ function SimulationPage({ config, devMode }) {
                     {playing ? "Pause" : "Play"}
                   </button>
                 )}
-                {simState === "complete" && imageData && (
+                {simState === "complete" && imageDataURL && (
                   <button
                     className="play-btn"
                     onClick={() => hsvSectionRef.current?.scrollIntoView({ behavior: "smooth" })}
@@ -2669,7 +2669,7 @@ function SimulationPage({ config, devMode }) {
               overlap between raw HSV photo analysis and the initial SCA extraction (Month 1).
             </p>
 
-            {!imageData ? (
+            {!imageDataURL ? (
               <div style={{ fontSize: 13, color: "var(--text-muted)", padding: "20px 0", textAlign: "center" }}>
                 No image uploaded — HSV comparison requires an uploaded leaf photo.
               </div>
@@ -2698,7 +2698,7 @@ function SimulationPage({ config, devMode }) {
                 {/* 4-panel grid */}
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
                   {[
-                    { label: "Original",              src: imageData.startsWith("data:") ? imageData : `data:image/png;base64,${imageData}` },
+                    { label: "Original",              src: imageDataURL },
                     { label: "Original (HSV)",         src: hsvData.photoHSVImg },
                     { label: "Simulated (Month 1)",    src: hsvData.simGridImg },
                     { label: "Agreement Map",          src: hsvData.agreementImg },
