@@ -398,6 +398,7 @@ export async function generateReportHTML({
   stageLabel, stageDesc, diseaseName,
   detections,
   imgWidth, imgHeight,   // natural dimensions from the <img> element — EXIF-corrected ground truth
+  hsvData,               // pre-computed panel images from the live HSV comparison panel
 }) {
   // Restore full data URL if only the raw base64 was stored
   const uploadedImgSrc = uploadedImage
@@ -413,18 +414,27 @@ export async function generateReportHTML({
       ? await new Promise(res => { const i = new Image(); i.onload = () => res(i.naturalHeight > i.naturalWidth); i.src = uploadedImgSrc; })
       : false;
 
-  // Classify the raw photo pixels with dice.py HSV (independent of YOLO maskGrid).
-  // Pass the ground-truth portrait flag so _computePhotoMask doesn't re-detect it.
-  const _maskResult = uploadedImgSrc ? await _computePhotoMask(uploadedImgSrc, isPortrait) : null;
-  const photoMask = _maskResult?.mask ?? null;
-
-  // Generate 2-D grid images; rotate sim + agreement 90° CCW when photo is portrait
-  const photoHSVImg        = uploadedImgSrc ? await _drawPhotoHSVImage(uploadedImgSrc) : null;
-  const simGridRaw         = frame0GridData ? drawSimulatedGrid(frame0GridData) : null;
-  const agreementRaw       = (photoMask && frame0GridData) ? drawAgreementMap(photoMask, frame0GridData) : null;
-  const simGridImg         = (isPortrait && simGridRaw)   ? await _rotateCCW(simGridRaw)   : simGridRaw;
-  const agreementImg       = (isPortrait && agreementRaw) ? await _rotateCCW(agreementRaw) : agreementRaw;
-  const perClass           = computePerClassDice(photoMask, frame0GridData);
+  // If the live app already computed all panel images (with landscape rotation + 3D sim),
+  // use them directly. Otherwise fall back to recomputing from source data.
+  let photoOriginalImg, photoHSVImg, simGridImg, agreementImg, perClass;
+  if (hsvData) {
+    photoOriginalImg = hsvData.photoOriginalImg ?? uploadedImgSrc;
+    photoHSVImg      = hsvData.photoHSVImg;
+    simGridImg       = hsvData.simGridImg;
+    agreementImg     = hsvData.agreementImg;
+    perClass         = hsvData.dice;
+  } else {
+    // Fallback: recompute from raw data
+    const _maskResult = uploadedImgSrc ? await _computePhotoMask(uploadedImgSrc, isPortrait) : null;
+    const photoMask = _maskResult?.mask ?? null;
+    photoOriginalImg = uploadedImgSrc;
+    photoHSVImg      = uploadedImgSrc ? await _drawPhotoHSVImage(uploadedImgSrc) : null;
+    const simGridRaw   = frame0GridData ? drawSimulatedGrid(frame0GridData) : null;
+    const agreementRaw = (photoMask && frame0GridData) ? drawAgreementMap(photoMask, frame0GridData) : null;
+    simGridImg         = (isPortrait && simGridRaw)   ? await _rotateCCW(simGridRaw)   : simGridRaw;
+    agreementImg       = (isPortrait && agreementRaw) ? await _rotateCCW(agreementRaw) : agreementRaw;
+    perClass           = computePerClassDice(photoMask, frame0GridData);
+  }
   const chartB64           = drawProgressionChart(frames);
 
   const fmt = v => typeof v === "number" ? v.toFixed(3) : "N/A";
@@ -491,7 +501,8 @@ h2{font-size:15px;font-weight:600;color:#334155;margin:32px 0 10px;padding-botto
 .dice-panel{flex:1;display:flex;flex-direction:column;align-items:center;background:#0f0f0f}
 .dice-panel+.dice-panel{border-left:1px solid #222}
 .dice-panel .label{color:#888;font-size:11px;font-weight:600;text-align:center;padding:8px 4px 4px;background:#0f0f0f;width:100%}
-.dice-panel img{width:100%;display:block;object-fit:contain;background:#0f0f0f}
+.dice-panel .img-wrap{position:relative;width:100%;aspect-ratio:1/1;background:#0f0f0f;overflow:hidden}
+.dice-panel .img-wrap img{position:absolute;inset:0;width:100%;height:100%;object-fit:fill;display:block}
 .dice-legend{display:flex;gap:18px;flex-wrap:wrap;justify-content:center;align-items:center;padding:10px 0;border:1px solid #e2e8f0;border-top:none;border-radius:0 0 8px 8px;background:#f8fafc;margin-top:-8px}
 .legend-item{display:flex;align-items:center;gap:6px;font-size:12px;color:#374151}
 .legend-swatch{width:14px;height:14px;border-radius:2px;flex-shrink:0}
@@ -640,27 +651,31 @@ tr:last-child td{border-bottom:none}
   <div class="dice-panels">
     <div class="dice-panel">
       <div class="label">Original</div>
-      ${uploadedImgSrc
-        ? `<img src="${uploadedImgSrc}" alt="Original leaf photo" style="max-height:320px;object-fit:contain"/>`
-        : `<div style="height:200px;display:flex;align-items:center;justify-content:center;color:#475569;font-size:12px">No image uploaded</div>`}
+      <div class="img-wrap">${photoOriginalImg
+        ? `<img src="${photoOriginalImg}" alt="Original leaf photo"/>`
+        : `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#475569;font-size:12px">No image uploaded</div>`}
+      </div>
     </div>
     <div class="dice-panel">
-      <div class="label">Original (HSV Classification)</div>
-      ${photoHSVImg
+      <div class="label">Original (HSV)</div>
+      <div class="img-wrap">${photoHSVImg
         ? `<img src="${photoHSVImg}" alt="Photo HSV classification"/>`
-        : `<div style="height:200px;display:flex;align-items:center;justify-content:center;color:#475569;font-size:12px">No HSV data</div>`}
+        : `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#475569;font-size:12px">No HSV data</div>`}
+      </div>
     </div>
     <div class="dice-panel">
-      <div class="label">Simulated (Month 1 — Initial Extraction)</div>
-      ${simGridImg
+      <div class="label">Simulated</div>
+      <div class="img-wrap">${simGridImg
         ? `<img src="${simGridImg}" alt="Simulation Month 1"/>`
-        : `<div style="height:200px;display:flex;align-items:center;justify-content:center;color:#475569;font-size:12px">No simulation data</div>`}
+        : `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#475569;font-size:12px">No simulation data</div>`}
+      </div>
     </div>
     <div class="dice-panel">
       <div class="label">Agreement Map</div>
-      ${agreementImg
+      <div class="img-wrap">${agreementImg
         ? `<img src="${agreementImg}" alt="Agreement map"/>`
-        : `<div style="height:200px;display:flex;align-items:center;justify-content:center;color:#475569;font-size:12px">No mask data</div>`}
+        : `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#475569;font-size:12px">No mask data</div>`}
+      </div>
     </div>
   </div>
   <div class="dice-legend">

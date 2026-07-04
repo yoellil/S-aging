@@ -2162,9 +2162,10 @@ function SimulationPage({ config, devMode }) {
       detections: detections ?? null,
       imgWidth: imgWidth ?? null,
       imgHeight: imgHeight ?? null,
+      hsvData: hsvData ?? null,
     });
     downloadReport(html, `saging-${dName.toLowerCase().replace(/\s+/g, "-")}-${Date.now()}.html`);
-  }, [disease, temp, rh, density, months, imageData, imageDataURL, maskGrid]);
+  }, [disease, temp, rh, density, months, imageData, imageDataURL, maskGrid, hsvData]);
 
   // ── Stream simulation frames from FastAPI backend on mount ────────────────
   useEffect(() => {
