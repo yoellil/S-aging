@@ -2819,18 +2819,23 @@ function SimulationPage({ config, devMode }) {
                 {/* 4-panel grid */}
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
                   {[
-                    { label: "Original",        src: hsvData.photoOriginalImg ?? imageDataURL },
-                    { label: "Original (HSV)",  src: hsvData.photoHSVImg },
+                    { label: "Original",        src: hsvData.photoOriginalImg ?? imageDataURL, square: true },
+                    { label: "Original (HSV)",  src: hsvData.photoHSVImg,                      square: true },
                     { label: "Simulated",       src: hsvData.simGridImg },
                     { label: "Agreement Map",   src: hsvData.agreementImg },
-                  ].map(({ label, src }) => (
+                  ].map(({ label, src, square }) => (
                     <div key={label} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                       <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", textAlign: "center" }}>{label}</div>
-                      <img
-                        src={src}
-                        alt={label}
-                        style={{ width: "100%", borderRadius: 6, border: "1px solid var(--border)", background: "#0f0f0f", objectFit: "contain", display: "block" }}
-                      />
+                      <div style={square ? { position: "relative", width: "100%", aspectRatio: "1 / 1", background: "#0f0f0f", borderRadius: 6, border: "1px solid var(--border)", overflow: "hidden" } : {}}>
+                        <img
+                          src={src}
+                          alt={label}
+                          style={square
+                            ? { position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain", display: "block" }
+                            : { width: "100%", borderRadius: 6, border: "1px solid var(--border)", background: "#0f0f0f", objectFit: "contain", display: "block" }
+                          }
+                        />
+                      </div>
                     </div>
                   ))}
                 </div>
