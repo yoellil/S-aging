@@ -1706,7 +1706,7 @@ const _LEAF_MASK = (() => {
   return mask;
 })();
 
-const LeafViewer3D = forwardRef(function LeafViewer3D({ frame, disease, devMode }, ref) {
+const LeafViewer3D = forwardRef(function LeafViewer3D({ frame, disease, devMode, imageDataURL }, ref) {
   const mountRef = useRef(null);
   const stateRef = useRef(null);
   const pendingRef = useRef(null); // holds { gridData, intensityData } while scene loads
@@ -1893,6 +1893,26 @@ const LeafViewer3D = forwardRef(function LeafViewer3D({ frame, disease, devMode 
 
   useEffect(() => { devModeRef.current = devMode; }, [devMode]);
 
+  // Swap base texture to the uploaded photo so the 3D leaf shows the real leaf surface.
+  useEffect(() => {
+    if (!imageDataURL) return;
+    const img = new Image();
+    img.onload = () => {
+      if (!stateRef.current) return;
+      stateRef.current.baseImg = img;
+      if (lastPaintArgsRef.current) {
+        const { gridData, intensityData, diseaseType } = lastPaintArgsRef.current;
+        paintCanvas(gridData, intensityData, diseaseType);
+      } else {
+        const { ctx, texture } = stateRef.current;
+        ctx.clearRect(0, 0, _TEX, _TEX);
+        ctx.drawImage(img, 0, 0, _TEX, _TEX);
+        texture.needsUpdate = true;
+      }
+    };
+    img.src = imageDataURL;
+  }, [imageDataURL, paintCanvas]);
+
   useEffect(() => {
     if (!lastPaintArgsRef.current) return;
     const { gridData, intensityData, diseaseType } = lastPaintArgsRef.current;
@@ -2027,6 +2047,7 @@ function SimulationPage({ config, devMode }) {
   const cancelledRef = useRef(false);
   const hasSavedRef = useRef(false);
   const hsvSectionRef = useRef(null);
+  const leafViewerRef = useRef(null);
 
   const [hsvData, setHsvData] = useState(null);
 
@@ -2152,11 +2173,14 @@ function SimulationPage({ config, devMode }) {
       // image decode — more reliable than the nullable imgHeight/imgWidth from the upload ref.
       const { mask: photoMask, isPortrait } = await computePhotoMask(imgSrc);
       if (cancelled) return;
-      const simGridRaw = drawSimulatedGrid(frame1.gridData);
+      // Capture the 3D leaf render (with uploaded photo as base texture) so the
+      // comparison panel shows the exact same image the user sees in the viewer.
+      // Falls back to the flat SCA grid render if the scene isn't ready yet.
+      const simGridImg = leafViewerRef.current?.captureTopDown(frame1, disease)
+        ?? drawSimulatedGrid(frame1.gridData);
       const agreementRaw = drawAgreementMap(photoMask, frame1.gridData);
-      const [photoHSVImg, simGridImg, agreementImg] = await Promise.all([
+      const [photoHSVImg, agreementImg] = await Promise.all([
         drawPhotoHSVImage(imgSrc),
-        isPortrait ? rotateCCW(simGridRaw) : Promise.resolve(simGridRaw),
         isPortrait ? rotateCCW(agreementRaw) : Promise.resolve(agreementRaw),
       ]);
       if (cancelled) return;
@@ -2280,7 +2304,7 @@ function SimulationPage({ config, devMode }) {
                   <>
                     {/* Interactive 3-D leaf viewer */}
                     {simState !== "error" ? (
-                      <LeafViewer3D frame={currentFrame} disease={disease} devMode={devMode} />
+                      <LeafViewer3D ref={leafViewerRef} frame={currentFrame} disease={disease} devMode={devMode} imageDataURL={imageDataURL} />
                     ) : (
                       <div style={{ padding: 32, textAlign: "center" }}>
                         <div style={{ fontSize: 13, color: COLORS.red400, marginBottom: 10 }}>
