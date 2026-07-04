@@ -1708,6 +1708,8 @@ const _LEAF_MASK = (() => {
 
 const LeafViewer3D = forwardRef(function LeafViewer3D({ frame, disease, devMode, imageDataURL }, ref) {
   const mountRef = useRef(null);
+  const gimbalRef = useRef(null);
+  const coordsRef = useRef(null);
   const stateRef = useRef(null);
   const pendingRef = useRef(null); // holds { gridData, intensityData } while scene loads
   const lastPaintArgsRef = useRef(null);
@@ -1860,11 +1862,54 @@ const LeafViewer3D = forwardRef(function LeafViewer3D({ frame, disease, devMode,
       }
     });
 
+    const _right = new THREE.Vector3();
+    const _up    = new THREE.Vector3();
+    const _fwd   = new THREE.Vector3();
+
     let animId;
     const animate = () => {
       animId = requestAnimationFrame(animate);
       controls.update();
       renderer.render(scene, camera);
+
+      // ── Gimbal ────────────────────────────────────────────────────────────
+      const gc = gimbalRef.current?.getContext("2d");
+      if (gc) {
+        const S = 80, cx = 40, cy = 40, len = 26;
+        gc.clearRect(0, 0, S, S);
+
+        _right.setFromMatrixColumn(camera.matrixWorld, 0);
+        _up.setFromMatrixColumn(camera.matrixWorld, 1);
+        camera.getWorldDirection(_fwd);
+
+        const axes = [
+          { v: new THREE.Vector3(1,0,0), bright:"#f66", dim:"#933", label:"X" },
+          { v: new THREE.Vector3(0,1,0), bright:"#6f6", dim:"#393", label:"Y" },
+          { v: new THREE.Vector3(0,0,1), bright:"#69f", dim:"#369", label:"Z" },
+        ].map(a => ({
+          ...a,
+          sx: a.v.dot(_right) * len,
+          sy: -a.v.dot(_up)   * len,
+          depth: a.v.dot(_fwd),
+        })).sort((a, b) => b.depth - a.depth); // back-to-front
+
+        for (const { sx, sy, depth, bright, dim, label } of axes) {
+          const col = depth > 0 ? dim : bright;
+          gc.strokeStyle = col; gc.lineWidth = 2;
+          gc.beginPath(); gc.moveTo(cx, cy); gc.lineTo(cx+sx, cy+sy); gc.stroke();
+          gc.fillStyle = col; gc.beginPath(); gc.arc(cx+sx, cy+sy, 3, 0, Math.PI*2); gc.fill();
+          gc.fillStyle = col; gc.font = "bold 10px monospace";
+          gc.textAlign = "center"; gc.textBaseline = "middle";
+          gc.fillText(label, cx + sx*1.5, cy + sy*1.5);
+        }
+      }
+
+      // ── Camera coords ─────────────────────────────────────────────────────
+      if (coordsRef.current) {
+        const p = camera.position;
+        coordsRef.current.textContent =
+          `x ${p.x.toFixed(1)}   y ${p.y.toFixed(1)}   z ${p.z.toFixed(1)}`;
+      }
     };
     animate();
 
@@ -2004,10 +2049,24 @@ const LeafViewer3D = forwardRef(function LeafViewer3D({ frame, disease, devMode,
   }), []);
 
   return (
-    <div
-      ref={mountRef}
-      style={{ width: "100%", height: 480, borderRadius: 8, overflow: "hidden", cursor: "grab" }}
-    />
+    <div style={{ position: "relative", width: "100%", height: 480, borderRadius: 8, overflow: "hidden" }}>
+      <div ref={mountRef} style={{ width: "100%", height: "100%", cursor: "grab" }} />
+
+      {/* Gimbal — bottom-right corner */}
+      <canvas ref={gimbalRef} width={80} height={80} style={{
+        position: "absolute", bottom: 10, right: 10,
+        width: 80, height: 80, pointerEvents: "none",
+        background: "rgba(0,0,0,0.35)", borderRadius: "50%",
+      }} />
+
+      {/* Camera coordinates — bottom-left corner */}
+      <div ref={coordsRef} style={{
+        position: "absolute", bottom: 10, left: 10,
+        fontFamily: "monospace", fontSize: 11, color: "#8bc4b0",
+        background: "rgba(0,0,0,0.45)", padding: "3px 8px", borderRadius: 4,
+        pointerEvents: "none", letterSpacing: "0.03em", whiteSpace: "pre",
+      }} />
+    </div>
   );
 });
 
