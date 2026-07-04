@@ -1843,9 +1843,9 @@ const LeafViewer3D = forwardRef(function LeafViewer3D({ frame, disease, devMode 
       const box = new THREE.Box3().setFromObject(gltf.scene);
       const center = box.getCenter(new THREE.Vector3());
       const size = box.getSize(new THREE.Vector3());
-      // Leaf is taller than wide; pull camera back to frame full height.
+      // Pull camera straight back along Z so the leaf face looks directly at the viewer.
       const dist = Math.max(size.x, size.y) * 1.6;
-      camera.position.set(center.x, center.y + dist * 0.9, center.z + dist * 0.3);
+      camera.position.set(center.x, center.y, center.z + dist);
       camera.lookAt(center);
       controls.target.copy(center);
       controls.update();
