@@ -2009,19 +2009,19 @@ const LeafViewer3D = forwardRef(function LeafViewer3D({ frame, disease, devMode 
       }
       texture.needsUpdate = true;
 
-      // Fixed front-facing orthographic camera — always directly in front of the leaf
-      // along +Z, independent of where the user has orbited the viewer.
-      // The leaf face normal is along Z (rotation.z = -π/2 keeps face in XY plane).
+      // Render with flat orthographic camera — same orientation as the perspective
+      // camera so the leaf appears the same way the user sees it, but without
+      // perspective depth distortion (leaf looks "laid flat").
       const maxDim = Math.max(leafSize.x, leafSize.y, leafSize.z);
       const halfSize = maxDim / 2 * 1.15;
+      const aspect = renderer.domElement.width / renderer.domElement.height;
       const ortho = new THREE.OrthographicCamera(
-        -halfSize, halfSize,
+        -halfSize * aspect, halfSize * aspect,
         halfSize, -halfSize,
         0.1, 1000
       );
-      ortho.position.set(leafCenter.x, leafCenter.y, leafCenter.z + maxDim * 2);
-      ortho.up.set(0, 1, 0);
-      ortho.lookAt(leafCenter);
+      ortho.position.copy(camera.position);
+      ortho.quaternion.copy(camera.quaternion);
       ortho.updateProjectionMatrix();
 
       const prevBg = scene.background;
