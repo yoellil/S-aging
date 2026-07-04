@@ -2253,27 +2253,7 @@ function SimulationPage({ config, devMode }) {
         img.src = _simRaw;
       });
 
-      // Overlay simulated on HSV original — both forced to the same 1:1 square
-      const simGridImg = await new Promise(res => {
-        const hsvImg = new Image();
-        hsvImg.onload = () => {
-          const simImg = new Image();
-          simImg.onload = () => {
-            const canvas = document.createElement("canvas");
-            canvas.width = S; canvas.height = S;
-            const ctx = canvas.getContext("2d");
-            ctx.drawImage(hsvImg, 0, 0, S, S);   // HSV base, squished to 1:1
-            ctx.globalAlpha = 0.55;
-            ctx.drawImage(simImg, 0, 0, S, S);   // simulated on top
-            ctx.globalAlpha = 1;
-            res(canvas.toDataURL("image/png"));
-          };
-          simImg.src = simSquare;
-        };
-        hsvImg.src = photoHSVImg;
-      });
-
-      setHsvData({ photoHSVImg, simGridImg, agreementImg, dice: computePerClassDice(photoMask, frame1.gridData) });
+      setHsvData({ photoHSVImg, simGridImg: simSquare, agreementImg, dice: computePerClassDice(photoMask, frame1.gridData) });
     })();
 
     return () => { cancelled = true; };
@@ -2807,11 +2787,12 @@ function SimulationPage({ config, devMode }) {
                 )}
 
                 {/* 4-panel grid */}
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
                   {[
-                    { label: "Original",      src: imageDataURL },
-                    { label: "Simulated",     src: hsvData.simGridImg },
-                    { label: "Agreement Map", src: hsvData.agreementImg },
+                    { label: "Original",        src: imageDataURL },
+                    { label: "Original (HSV)",  src: hsvData.photoHSVImg },
+                    { label: "Simulated",       src: hsvData.simGridImg },
+                    { label: "Agreement Map",   src: hsvData.agreementImg },
                   ].map(({ label, src }) => (
                     <div key={label} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                       <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", textAlign: "center" }}>{label}</div>
