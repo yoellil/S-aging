@@ -2822,7 +2822,7 @@ function SimulationPage({ config, devMode }) {
                     { label: "Original",        src: hsvData.photoOriginalImg ?? imageDataURL, square: true },
                     { label: "Original (HSV)",  src: hsvData.photoHSVImg,                      square: true },
                     { label: "Simulated",       src: hsvData.simGridImg },
-                    { label: "Agreement Map",   src: hsvData.agreementImg },
+                    { label: "Agreement Map",   src: hsvData.agreementImg,  square: true },
                   ].map(({ label, src, square }) => (
                     <div key={label} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                       <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", textAlign: "center" }}>{label}</div>
