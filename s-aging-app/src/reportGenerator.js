@@ -174,7 +174,7 @@ async function _computePhotoMask(imgDataURL, isPortraitHint) {
           mask[r * _COLS + c] = _classifyHSVPhoto(sumR / 4, sumG / 4, sumB / 4);
         }
       }
-      resolve(mask);
+      resolve({ mask, isPortrait });
     };
     img.src = imgDataURL;
   });
@@ -415,7 +415,8 @@ export async function generateReportHTML({
 
   // Classify the raw photo pixels with dice.py HSV (independent of YOLO maskGrid).
   // Pass the ground-truth portrait flag so _computePhotoMask doesn't re-detect it.
-  const photoMask = uploadedImgSrc ? await _computePhotoMask(uploadedImgSrc, isPortrait) : null;
+  const _maskResult = uploadedImgSrc ? await _computePhotoMask(uploadedImgSrc, isPortrait) : null;
+  const photoMask = _maskResult?.mask ?? null;
 
   // Generate 2-D grid images; rotate sim + agreement 90° CCW when photo is portrait
   const photoHSVImg        = uploadedImgSrc ? await _drawPhotoHSVImage(uploadedImgSrc) : null;

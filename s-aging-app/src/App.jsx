@@ -2151,10 +2151,9 @@ function SimulationPage({ config, devMode }) {
     if (!frame1?.gridData) return;
 
     (async () => {
-      // Use imgHeight/imgWidth from the <img> element (EXIF-corrected, same as what user sees)
-      // rather than re-loading the image and hoping EXIF is applied consistently in canvas.
-      const isPortrait = (imgHeight ?? 0) > (imgWidth ?? 0);
-      const photoMask = await computePhotoMask(imgSrc, isPortrait);
+      // Let _computePhotoMask detect portrait from naturalWidth/naturalHeight after full
+      // image decode — more reliable than the nullable imgHeight/imgWidth from the upload ref.
+      const { mask: photoMask, isPortrait } = await computePhotoMask(imgSrc);
       if (cancelled) return;
       const simGridRaw = drawSimulatedGrid(frame1.gridData);
       const agreementRaw = drawAgreementMap(photoMask, frame1.gridData);
