@@ -1852,7 +1852,7 @@ const LeafViewer3D = forwardRef(function LeafViewer3D({ frame, disease, devMode,
 
       const dist = Math.max(size.x, size.y) * 1.6;
       camera.up.set(0, 1, 0);
-      camera.position.set(0, 0.7, dist * 0.9); // clean origin-relative coords
+      camera.position.set(-24.6, 0.4, 1.0);
       camera.lookAt(0, 0, 0);
       controls.target.set(0, 0, 0);
       controls.update();
