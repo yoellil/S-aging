@@ -2246,7 +2246,7 @@ function SimulationPage({ config, devMode }) {
           canvas.width = S; canvas.height = S;
           const ctx = canvas.getContext("2d");
           ctx.translate(S / 2, S / 2);
-          ctx.rotate(Math.PI); // 180° = CCW twice
+          ctx.rotate(Math.PI / 2); // 90° CW (rotate right once)
           ctx.drawImage(img, -S / 2, -S / 2, S, S); // squish to 1:1
           res(canvas.toDataURL("image/png"));
         };
