@@ -1844,18 +1844,21 @@ const LeafViewer3D = forwardRef(function LeafViewer3D({ frame, disease, devMode,
       gltf.scene.rotation.set(0, 0, -Math.PI / 2);
       scene.add(gltf.scene);
 
+      // Center the leaf at world origin so camera coords are clean/predictable.
       const box = new THREE.Box3().setFromObject(gltf.scene);
       const center = box.getCenter(new THREE.Vector3());
       const size = box.getSize(new THREE.Vector3());
+      gltf.scene.position.sub(center); // shift mesh so bounding center = (0,0,0)
+
       const dist = Math.max(size.x, size.y) * 1.6;
       camera.up.set(0, 1, 0);
-      camera.position.set(-15.1, 0.7, 26.6);
-      camera.lookAt(center);
-      controls.target.copy(center);
+      camera.position.set(0, 0.7, dist * 0.9); // clean origin-relative coords
+      camera.lookAt(0, 0, 0);
+      controls.target.set(0, 0, 0);
       controls.update();
       // Store for top-down capture
       if (stateRef.current) {
-        stateRef.current.leafCenter = center.clone();
+        stateRef.current.leafCenter = new THREE.Vector3(0, 0, 0);
         stateRef.current.leafSize = size.clone();
       }
     });
