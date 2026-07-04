@@ -1837,15 +1837,16 @@ const LeafViewer3D = forwardRef(function LeafViewer3D({ frame, disease, devMode,
       gltf.scene.traverse((child) => {
         if (child.isMesh) child.material = mat;
       });
-      // Keep the GLTF's natural vertical orientation (long axis top-to-bottom).
+      // Rotate leaf flat — GLTF natural axis is vertical; -90° Z lays it horizontal.
+      gltf.scene.rotation.z = -Math.PI / 2;
       scene.add(gltf.scene);
 
       const box = new THREE.Box3().setFromObject(gltf.scene);
       const center = box.getCenter(new THREE.Vector3());
       const size = box.getSize(new THREE.Vector3());
-      // Pull camera straight back along Z so the leaf face looks directly at the viewer.
+      // Camera above and slightly forward so the flat leaf face fills the viewport.
       const dist = Math.max(size.x, size.y) * 1.6;
-      camera.position.set(center.x, center.y, center.z + dist);
+      camera.position.set(center.x, center.y + dist * 0.85, center.z + dist * 0.35);
       camera.lookAt(center);
       controls.target.copy(center);
       controls.update();
