@@ -2235,19 +2235,42 @@ function SimulationPage({ config, devMode }) {
       ]);
       if (cancelled) return;
 
-      // 3D capture → rotate 180° CCW (CCW twice) → squish to 1:1 square
+      // 3D capture → pixel-scan to find leaf bounds → crop → rotate CW → fill square
       const _simRaw = leafViewerRef.current?.captureTopDown(frame1, disease)
         ?? drawSimulatedGrid(frame1.gridData);
       const S = 512;
       const simSquare = await new Promise(res => {
         const img = new Image();
         img.onload = () => {
+          // Scan pixels to find the bounding box of non-black content (the leaf)
+          const tmp = document.createElement("canvas");
+          tmp.width = img.naturalWidth; tmp.height = img.naturalHeight;
+          const tctx = tmp.getContext("2d");
+          tctx.drawImage(img, 0, 0);
+          const px = tctx.getImageData(0, 0, tmp.width, tmp.height).data;
+          let x0 = tmp.width, x1 = 0, y0 = tmp.height, y1 = 0;
+          for (let y = 0; y < tmp.height; y++) {
+            for (let x = 0; x < tmp.width; x++) {
+              const i = (y * tmp.width + x) * 4;
+              if (px[i] + px[i+1] + px[i+2] > 60) { // not black
+                if (x < x0) x0 = x; if (x > x1) x1 = x;
+                if (y < y0) y0 = y; if (y > y1) y1 = y;
+              }
+            }
+          }
+          const pad = 8;
+          x0 = Math.max(0, x0 - pad); y0 = Math.max(0, y0 - pad);
+          x1 = Math.min(tmp.width - 1, x1 + pad);
+          y1 = Math.min(tmp.height - 1, y1 + pad);
+          const cw = x1 - x0, ch = y1 - y0;
+
+          // Rotate 90° CW and scale the cropped leaf to fill the square
           const canvas = document.createElement("canvas");
           canvas.width = S; canvas.height = S;
           const ctx = canvas.getContext("2d");
           ctx.translate(S / 2, S / 2);
-          ctx.rotate(Math.PI / 2); // 90° CW (rotate right once)
-          ctx.drawImage(img, -S / 2, -S / 2, S, S); // squish to 1:1
+          ctx.rotate(Math.PI / 2);
+          ctx.drawImage(img, x0, y0, cw, ch, -S / 2, -S / 2, S, S);
           res(canvas.toDataURL("image/png"));
         };
         img.src = _simRaw;
