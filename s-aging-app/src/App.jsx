@@ -2269,7 +2269,7 @@ function SimulationPage({ config, devMode }) {
           canvas.width = S; canvas.height = S;
           const ctx = canvas.getContext("2d");
           ctx.translate(S / 2, S / 2);
-          ctx.rotate(Math.PI / 2);
+          ctx.rotate(Math.PI);
           ctx.drawImage(img, x0, y0, cw, ch, -S / 2, -S / 2, S, S);
           res(canvas.toDataURL("image/png"));
         };
