@@ -1847,11 +1847,11 @@ const LeafViewer3D = forwardRef(function LeafViewer3D({ frame, disease, devMode,
       const box = new THREE.Box3().setFromObject(gltf.scene);
       const center = box.getCenter(new THREE.Vector3());
       const size = box.getSize(new THREE.Vector3());
-      // Camera above (+Y) and slightly forward (+Z) — original values that showed
-      // the flat leaf face correctly in the approved screenshot.
+      // Shallow front-angle: almost at leaf level (+Y * 0.06), pulled forward (+Z * 0.85).
+      // Matches the user-approved view at approx x -15.7  y 1.2  z 26.4.
       const dist = Math.max(size.x, size.y) * 1.6;
       camera.up.set(0, 1, 0);
-      camera.position.set(center.x, center.y + dist * 0.9, center.z + dist * 0.3);
+      camera.position.set(center.x, center.y + dist * 0.06, center.z + dist * 0.85);
       camera.lookAt(center);
       controls.target.copy(center);
       controls.update();
