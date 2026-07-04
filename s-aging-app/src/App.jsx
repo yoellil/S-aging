@@ -1335,8 +1335,19 @@ function UploadPage({ onNavigate, setSimConfig, devMode, modelReady }) {
     };
     reader.onload = (e) => {
       setFileProgress(100);
-      setFileLoading(false);
-      setUploadedImage({ url: e.target.result, name: file.name });
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        const ctx = canvas.getContext("2d");
+        ctx.translate(img.naturalWidth, 0);
+        ctx.scale(-1, 1);
+        ctx.drawImage(img, 0, 0);
+        setFileLoading(false);
+        setUploadedImage({ url: canvas.toDataURL("image/png"), name: file.name });
+      };
+      img.src = e.target.result;
     };
     reader.readAsDataURL(file);
   }, []);
