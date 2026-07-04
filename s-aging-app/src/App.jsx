@@ -2229,11 +2229,25 @@ function SimulationPage({ config, devMode }) {
       // image decode — more reliable than the nullable imgHeight/imgWidth from the upload ref.
       const { mask: photoMask, isPortrait } = await computePhotoMask(imgSrc);
       if (cancelled) return;
-      // Capture the 3D leaf render (with uploaded photo as base texture) so the
-      // comparison panel shows the exact same image the user sees in the viewer.
-      // Falls back to the flat SCA grid render if the scene isn't ready yet.
-      const simGridImg = leafViewerRef.current?.captureTopDown(frame1, disease)
+      // Capture the 3D leaf render, then rotate 90° CCW and square-crop the center
+      // so the simulated panel is 1:1 with the leaf filling the frame.
+      const _simRaw = leafViewerRef.current?.captureTopDown(frame1, disease)
         ?? drawSimulatedGrid(frame1.gridData);
+      const simGridImg = await new Promise(res => {
+        const img = new Image();
+        img.onload = () => {
+          const W = img.naturalWidth, H = img.naturalHeight;
+          const S = Math.min(W, H); // square side = shorter dimension
+          const canvas = document.createElement("canvas");
+          canvas.width = S; canvas.height = S;
+          const ctx = canvas.getContext("2d");
+          ctx.translate(S / 2, S / 2);
+          ctx.rotate(-Math.PI / 2); // CCW (rotate left)
+          ctx.drawImage(img, -W / 2, -H / 2); // center-crop
+          res(canvas.toDataURL("image/png"));
+        };
+        img.src = _simRaw;
+      });
       const agreementRaw = drawAgreementMap(photoMask, frame1.gridData);
       const [photoHSVImg, agreementImg] = await Promise.all([
         drawPhotoHSVImage(imgSrc),
