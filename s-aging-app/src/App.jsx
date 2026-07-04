@@ -2831,7 +2831,7 @@ function SimulationPage({ config, devMode }) {
                           src={src}
                           alt={label}
                           style={square
-                            ? { position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain", display: "block" }
+                            ? { position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "fill", display: "block" }
                             : { width: "100%", borderRadius: 6, border: "1px solid var(--border)", background: "#0f0f0f", objectFit: "contain", display: "block" }
                           }
                         />
