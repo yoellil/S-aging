@@ -2807,12 +2807,11 @@ function SimulationPage({ config, devMode }) {
                 )}
 
                 {/* 4-panel grid */}
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
                   {[
-                    { label: "Original",              src: imageDataURL },
-                    { label: "Original (HSV)",         src: hsvData.photoHSVImg },
-                    { label: "Simulated Overlay",      src: hsvData.simGridImg },
-                    { label: "Agreement Map",          src: hsvData.agreementImg },
+                    { label: "Original",      src: imageDataURL },
+                    { label: "Simulated",     src: hsvData.simGridImg },
+                    { label: "Agreement Map", src: hsvData.agreementImg },
                   ].map(({ label, src }) => (
                     <div key={label} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                       <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", textAlign: "center" }}>{label}</div>
