@@ -2225,35 +2225,54 @@ function SimulationPage({ config, devMode }) {
     if (!frame1?.gridData) return;
 
     (async () => {
-      // Let _computePhotoMask detect portrait from naturalWidth/naturalHeight after full
-      // image decode — more reliable than the nullable imgHeight/imgWidth from the upload ref.
       const { mask: photoMask, isPortrait } = await computePhotoMask(imgSrc);
       if (cancelled) return;
-      // Capture the 3D leaf render, then rotate 90° CCW and square-crop the center
-      // so the simulated panel is 1:1 with the leaf filling the frame.
-      const _simRaw = leafViewerRef.current?.captureTopDown(frame1, disease)
-        ?? drawSimulatedGrid(frame1.gridData);
-      const simGridImg = await new Promise(res => {
-        const img = new Image();
-        img.onload = () => {
-          const W = img.naturalWidth, H = img.naturalHeight;
-          const S = Math.min(W, H); // square side = shorter dimension
-          const canvas = document.createElement("canvas");
-          canvas.width = S; canvas.height = S;
-          const ctx = canvas.getContext("2d");
-          ctx.translate(S / 2, S / 2);
-          ctx.rotate(-Math.PI / 2); // CCW (rotate left)
-          ctx.drawImage(img, -W / 2, -H / 2); // center-crop
-          res(canvas.toDataURL("image/png"));
-        };
-        img.src = _simRaw;
-      });
+
       const agreementRaw = drawAgreementMap(photoMask, frame1.gridData);
       const [photoHSVImg, agreementImg] = await Promise.all([
         drawPhotoHSVImage(imgSrc),
         isPortrait ? rotateCCW(agreementRaw) : Promise.resolve(agreementRaw),
       ]);
       if (cancelled) return;
+
+      // 3D capture → rotate 180° CCW (CCW twice) → squish to 1:1 square
+      const _simRaw = leafViewerRef.current?.captureTopDown(frame1, disease)
+        ?? drawSimulatedGrid(frame1.gridData);
+      const S = 512;
+      const simSquare = await new Promise(res => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement("canvas");
+          canvas.width = S; canvas.height = S;
+          const ctx = canvas.getContext("2d");
+          ctx.translate(S / 2, S / 2);
+          ctx.rotate(Math.PI); // 180° = CCW twice
+          ctx.drawImage(img, -S / 2, -S / 2, S, S); // squish to 1:1
+          res(canvas.toDataURL("image/png"));
+        };
+        img.src = _simRaw;
+      });
+
+      // Overlay simulated on HSV original — both forced to the same 1:1 square
+      const simGridImg = await new Promise(res => {
+        const hsvImg = new Image();
+        hsvImg.onload = () => {
+          const simImg = new Image();
+          simImg.onload = () => {
+            const canvas = document.createElement("canvas");
+            canvas.width = S; canvas.height = S;
+            const ctx = canvas.getContext("2d");
+            ctx.drawImage(hsvImg, 0, 0, S, S);   // HSV base, squished to 1:1
+            ctx.globalAlpha = 0.55;
+            ctx.drawImage(simImg, 0, 0, S, S);   // simulated on top
+            ctx.globalAlpha = 1;
+            res(canvas.toDataURL("image/png"));
+          };
+          simImg.src = simSquare;
+        };
+        hsvImg.src = photoHSVImg;
+      });
+
       setHsvData({ photoHSVImg, simGridImg, agreementImg, dice: computePerClassDice(photoMask, frame1.gridData) });
     })();
 
@@ -2792,7 +2811,7 @@ function SimulationPage({ config, devMode }) {
                   {[
                     { label: "Original",              src: imageDataURL },
                     { label: "Original (HSV)",         src: hsvData.photoHSVImg },
-                    { label: "Simulated (Month 1)",    src: hsvData.simGridImg },
+                    { label: "Simulated Overlay",      src: hsvData.simGridImg },
                     { label: "Agreement Map",          src: hsvData.agreementImg },
                   ].map(({ label, src }) => (
                     <div key={label} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
