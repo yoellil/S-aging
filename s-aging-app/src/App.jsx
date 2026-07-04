@@ -2229,10 +2229,16 @@ function SimulationPage({ config, devMode }) {
       if (cancelled) return;
 
       const agreementRaw = drawAgreementMap(photoMask, frame1.gridData);
-      const [photoHSVImg, agreementImg] = await Promise.all([
+      const [photoHSVRaw, agreementImg] = await Promise.all([
         drawPhotoHSVImage(imgSrc),
         isPortrait ? rotateCCW(agreementRaw) : Promise.resolve(agreementRaw),
       ]);
+      if (cancelled) return;
+
+      // Landscape photos are rotated CCW for the Original and HSV display panels
+      const [photoOriginalImg, photoHSVImg] = !isPortrait
+        ? await Promise.all([rotateCCW(imgSrc), rotateCCW(photoHSVRaw)])
+        : [imgSrc, photoHSVRaw];
       if (cancelled) return;
 
       // 3D capture → pixel-scan to find leaf bounds → crop → rotate CW → fill square
@@ -2277,7 +2283,7 @@ function SimulationPage({ config, devMode }) {
         img.src = _simRaw;
       });
 
-      setHsvData({ photoHSVImg, simGridImg: simSquare, agreementImg, dice: computePerClassDice(photoMask, frame1.gridData) });
+      setHsvData({ photoOriginalImg, photoHSVImg, simGridImg: simSquare, agreementImg, dice: computePerClassDice(photoMask, frame1.gridData) });
     })();
 
     return () => { cancelled = true; };
@@ -2813,7 +2819,7 @@ function SimulationPage({ config, devMode }) {
                 {/* 4-panel grid */}
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
                   {[
-                    { label: "Original",        src: imageDataURL },
+                    { label: "Original",        src: hsvData.photoOriginalImg ?? imageDataURL },
                     { label: "Original (HSV)",  src: hsvData.photoHSVImg },
                     { label: "Simulated",       src: hsvData.simGridImg },
                     { label: "Agreement Map",   src: hsvData.agreementImg },
