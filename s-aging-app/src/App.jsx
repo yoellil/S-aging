@@ -2767,17 +2767,19 @@ function SimulationPage({ config, devMode }) {
           </div>
         </div>
 
-        <ExplainabilityDashboard
-          disease={disease}
-          scenarioKey={scenarioKey}
-          checkedEarly={checkedEarly}
-          onToggleEarly={(i) => setCheckedEarly(prev => { const n = new Set(prev); n.has(i) ? n.delete(i) : n.add(i); return n; })}
-          checkedLate={checkedLate}
-          onToggleLate={(i) => setCheckedLate(prev => { const n = new Set(prev); n.has(i) ? n.delete(i) : n.add(i); return n; })}
-          onResimulate={handleResimulate}
-          onReset={() => { setCheckedEarly(new Set()); setCheckedLate(new Set()); }}
-          simState={simState}
-        />
+        {activeTab === "field" && (
+          <ExplainabilityDashboard
+            disease={disease}
+            scenarioKey={scenarioKey}
+            checkedEarly={checkedEarly}
+            onToggleEarly={(i) => setCheckedEarly(prev => { const n = new Set(prev); n.has(i) ? n.delete(i) : n.add(i); return n; })}
+            checkedLate={checkedLate}
+            onToggleLate={(i) => setCheckedLate(prev => { const n = new Set(prev); n.has(i) ? n.delete(i) : n.add(i); return n; })}
+            onResimulate={handleResimulate}
+            onReset={() => { setCheckedEarly(new Set()); setCheckedLate(new Set()); }}
+            simState={simState}
+          />
+        )}
 
         {/* ── HSV Comparison section (visible only after simulation completes) ── */}
         {simState === "complete" && (
