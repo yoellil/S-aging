@@ -2104,8 +2104,12 @@ function SimulationPage({ config, devMode }) {
   const hasSavedRef = useRef(false);
   const hsvSectionRef = useRef(null);
   const leafViewerRef = useRef(null);
+  const viewerRef = useRef(null); // scroll target for resimulate
 
   const [hsvData, setHsvData] = useState(null);
+
+  // Prevention checklist state
+  const [checkedSteps, setCheckedSteps] = useState(new Set());
 
   const isFW = disease === "fusarium_wilt";
   const diseaseName = isFW ? "Fusarium Wilt TR4" : "Black Sigatoka";
@@ -2131,6 +2135,33 @@ function SimulationPage({ config, devMode }) {
       );
     }, 50);
   }, [disease, temp, rh, density, detections, maskGrid, imgWidth, imgHeight, imageData]);
+
+  const handleResimulate = useCallback((preventionFactor) => {
+    cancelledRef.current = true;
+    clearInterval(playRef.current);
+    setTimeout(() => {
+      cancelledRef.current = false;
+      framesRef.current = [];
+      setHsvData(null);
+      setFrames([]); setTimeStep(0); setPlaying(false); setSimState("loading"); setErrorMsg(null);
+      streamSimulation(
+        { disease, temp, rh, density, months, detections, maskGrid, imgWidth, imgHeight, imageData, prevention_factor: preventionFactor },
+        (frame) => {
+          if (cancelledRef.current) return;
+          framesRef.current = [...framesRef.current, frame];
+          setFrames([...framesRef.current]);
+          setTimeStep(framesRef.current.length - 1);
+        },
+        () => { if (!cancelledRef.current) setSimState("complete"); },
+        (err) => { if (!cancelledRef.current) { setSimState("error"); setErrorMsg(err.message); } }
+      );
+      viewerRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 50);
+  }, [disease, temp, rh, density, detections, maskGrid, imgWidth, imgHeight, imageData]);
+
+  const handleResetChecklist = useCallback(() => {
+    setCheckedSteps(new Set());
+  }, []);
 
   const handlePlayPause = useCallback(() => {
     setPlaying(p => {
@@ -2393,7 +2424,7 @@ function SimulationPage({ config, devMode }) {
               </div>
             </div>
 
-            <div className="sim-viewer">
+            <div className="sim-viewer" ref={viewerRef}>
               <div className="sim-canvas-wrap" style={{
                 position: "relative",
                 minHeight: activeTab === "field" ? 0 : 480,
@@ -2744,6 +2775,15 @@ function SimulationPage({ config, devMode }) {
           months={months}
           onSeek={(t) => { setPlaying(false); setTimeStep(t); }}
           disabled={frames.length === 0}
+          checkedSteps={checkedSteps}
+          onStepToggle={(i) => setCheckedSteps(prev => {
+            const next = new Set(prev);
+            next.has(i) ? next.delete(i) : next.add(i);
+            return next;
+          })}
+          onResimulate={handleResimulate}
+          onReset={handleResetChecklist}
+          simState={simState}
         />
 
         {/* ── HSV Comparison section (visible only after simulation completes) ── */}

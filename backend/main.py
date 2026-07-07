@@ -77,6 +77,7 @@ class SimRequest(BaseModel):
     imgHeight: Optional[int] = None
     imageData: Optional[str] = None
     maskGrid: Optional[List[int]] = None
+    prevention_factor: float = 0.0  # 0.0 = no prevention, 1.0 = 100% spread reduction
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -115,6 +116,7 @@ async def simulate(req: SimRequest):
             img_w=req.imgWidth,
             img_h=req.imgHeight,
             mask_grid=req.maskGrid,
+            prevention_factor=float(np.clip(req.prevention_factor, 0.0, 0.95)),
         ))
 
         # Step 2: render all frames in parallel using the renderer pool

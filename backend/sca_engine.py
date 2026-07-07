@@ -409,6 +409,7 @@ class SCAEngine:
         img_w: Optional[int] = None,
         img_h: Optional[int] = None,
         mask_grid: Optional[List[int]] = None,
+        prevention_factor: float = 0.0,
     ) -> Generator[Dict, None, None]:
         """
         Run the SCA simulation for `months` months and yield one frame per SCA step.
@@ -419,7 +420,7 @@ class SCAEngine:
         """
         env = self.compute_env(disease, temp, rh, density)
         is_fw  = env["is_fw"]
-        p_base = env["p_base"]
+        p_base = env["p_base"] * (1.0 - float(np.clip(prevention_factor, 0.0, 0.95)))
         e_env  = float(env["E_ENV"])
 
         grid = np.zeros((self.ROWS, self.COLS), dtype=np.uint8)
