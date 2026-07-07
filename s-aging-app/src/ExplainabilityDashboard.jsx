@@ -294,7 +294,7 @@ export default function ExplainabilityDashboard({
       MAX_PREVENTION
     );
     clearTimeout(resimTimer.current);
-    resimTimer.current = setTimeout(() => onResimulate(newFactor), 600);
+    resimTimer.current = setTimeout(() => onResimulate(newFactor), 150);
   };
 
   const handleReset = () => {
@@ -478,41 +478,58 @@ export default function ExplainabilityDashboard({
             )}
           </AnimatePresence>
 
-          {/* Status row — auto-sim indicator + Reset */}
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 10, gap: 8 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--text-muted)" }}>
-              {isResimulating ? (
-                <>
-                  <Loader size={12} style={{ animation: "spin 1s linear infinite", color: "var(--green)" }} />
-                  <span style={{ color: "var(--green)", fontWeight: 600 }}>Simulating…</span>
-                </>
-              ) : anyChecked ? (
-                <span>Auto-simulates on change</span>
-              ) : (
-                <span>Check a procedure to simulate prevention</span>
-              )}
-            </div>
+          {/* Status + buttons row */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
+            {/* Resimulate */}
+            <button
+              onClick={() => { clearTimeout(resimTimer.current); onResimulate(preventionFactor); }}
+              disabled={!anyChecked || isResimulating}
+              style={{
+                flex: 1,
+                display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                padding: "9px 14px",
+                borderRadius: "var(--radius-sm)",
+                border: "none",
+                background: anyChecked && !isResimulating ? "var(--green)" : "var(--bg3)",
+                color: anyChecked && !isResimulating ? "#fff" : "var(--text-muted)",
+                fontSize: 12, fontWeight: 700,
+                cursor: anyChecked && !isResimulating ? "pointer" : "not-allowed",
+                transition: "all 0.15s",
+              }}
+            >
+              {isResimulating
+                ? <><Loader size={13} style={{ animation: "spin 1s linear infinite" }} /> Simulating…</>
+                : "Resimulate"}
+            </button>
+
+            {/* Reset */}
             <button
               onClick={handleReset}
               disabled={!anyChecked || isResimulating}
               style={{
                 display: "flex", alignItems: "center", gap: 5,
-                padding: "7px 11px",
+                padding: "9px 12px",
                 borderRadius: "var(--radius-sm)",
                 border: "1.5px solid var(--border)",
                 background: "var(--bg)",
                 color: "var(--text-muted)",
-                fontSize: 11,
-                fontWeight: 600,
+                fontSize: 12, fontWeight: 600,
                 cursor: anyChecked && !isResimulating ? "pointer" : "not-allowed",
                 opacity: anyChecked && !isResimulating ? 1 : 0.4,
                 transition: "all 0.15s",
               }}
             >
-              <RotateCcw size={12} />
+              <RotateCcw size={13} />
               Reset
             </button>
           </div>
+
+          {/* Auto-sim hint */}
+          {!isResimulating && (
+            <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 6, textAlign: "center" }}>
+              {anyChecked ? "Auto-simulates on change · or click Resimulate" : "Check a procedure to begin"}
+            </div>
+          )}
 
           {!isEarlyOnset && (
             <div style={{
