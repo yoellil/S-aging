@@ -1,6 +1,6 @@
-import { useMemo, useRef, useEffect } from "react";
+import { useMemo } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { FlaskConical, AlertTriangle, ShieldCheck, Leaf, RotateCcw, Loader } from "lucide-react";
+import { FlaskConical, AlertTriangle, ShieldCheck, Leaf, RotateCcw, Loader, PlayCircle } from "lucide-react";
 
 // ── Scenario content ──────────────────────────────────────────────────────────
 // reduction: fraction of p_base removed when this step is checked (summed, capped at 0.80)
@@ -279,26 +279,7 @@ export default function ExplainabilityDashboard({
 
   const isResimulating = simState === "loading";
 
-  // Debounce ref — auto-resimulate 600ms after the last checkbox change
-  const resimTimer = useRef(null);
-  useEffect(() => () => clearTimeout(resimTimer.current), []);
-
-  const handleToggle = (i) => {
-    // Compute the new set synchronously so we can calculate the factor before state updates
-    const newChecked = new Set(checkedSteps);
-    newChecked.has(i) ? newChecked.delete(i) : newChecked.add(i);
-    onStepToggle(i);
-
-    const newFactor = Math.min(
-      steps.reduce((sum, step, idx) => newChecked.has(idx) ? sum + step.reduction : sum, 0),
-      MAX_PREVENTION
-    );
-    clearTimeout(resimTimer.current);
-    resimTimer.current = setTimeout(() => onResimulate(newFactor), 150);
-  };
-
   const handleReset = () => {
-    clearTimeout(resimTimer.current);
     onReset();
     onResimulate(0);
   };
@@ -434,7 +415,7 @@ export default function ExplainabilityDashboard({
                   step={step}
                   index={i}
                   checked={checkedSteps.has(i)}
-                  onToggle={() => handleToggle(i)}
+                  onToggle={() => onStepToggle(i)}
                 />
               ))}
             </motion.div>
@@ -478,11 +459,10 @@ export default function ExplainabilityDashboard({
             )}
           </AnimatePresence>
 
-          {/* Status + buttons row */}
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
-            {/* Resimulate */}
+          {/* Resimulate / Reset buttons */}
+          <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
             <button
-              onClick={() => { clearTimeout(resimTimer.current); onResimulate(preventionFactor); }}
+              onClick={() => onResimulate(preventionFactor)}
               disabled={!anyChecked || isResimulating}
               style={{
                 flex: 1,
@@ -499,10 +479,8 @@ export default function ExplainabilityDashboard({
             >
               {isResimulating
                 ? <><Loader size={13} style={{ animation: "spin 1s linear infinite" }} /> Simulating…</>
-                : "Resimulate"}
+                : <><PlayCircle size={14} /> Resimulate</>}
             </button>
-
-            {/* Reset */}
             <button
               onClick={handleReset}
               disabled={!anyChecked || isResimulating}
@@ -523,13 +501,6 @@ export default function ExplainabilityDashboard({
               Reset
             </button>
           </div>
-
-          {/* Auto-sim hint */}
-          {!isResimulating && (
-            <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 6, textAlign: "center" }}>
-              {anyChecked ? "Auto-simulates on change · or click Resimulate" : "Check a procedure to begin"}
-            </div>
-          )}
 
           {!isEarlyOnset && (
             <div style={{
