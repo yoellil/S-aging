@@ -399,7 +399,7 @@ export default function ExplainabilityDashboard({
   const scenario = SCENARIOS[scenarioKey] ?? SCENARIOS["single-sigatoka"];
   const isCritical = scenario.severity === "critical";
 
-  const MAX_PREVENTION = 0.90;
+  const MAX_PREVENTION = 0.70;
   const earlyReduction = EARLY_TIPS.reduce((s, step, i) => checkedEarly.has(i) ? s + step.reduction : s, 0);
   const lateReduction  = scenario.steps.reduce((s, step, i) => checkedLate.has(i)  ? s + step.reduction  : s, 0);
   const rawReduction   = earlyReduction + lateReduction;
@@ -504,7 +504,7 @@ export default function ExplainabilityDashboard({
                 />
               </div>
               <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 5 }}>
-                Max 90% · {rawReduction > MAX_PREVENTION ? "Capped at 90%" : `${Math.round((MAX_PREVENTION - preventionFactor) * 100)}% remaining`}
+                Max 70% · {rawReduction > MAX_PREVENTION ? "Capped at 70%" : `${Math.round((MAX_PREVENTION - preventionFactor) * 100)}% remaining`}
               </div>
             </motion.div>
           )}
