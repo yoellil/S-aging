@@ -1,6 +1,6 @@
-import { useMemo } from "react";
+import { useMemo, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { FlaskConical, AlertTriangle, ShieldCheck, Leaf, RotateCcw, PlayCircle } from "lucide-react";
+import { FlaskConical, AlertTriangle, ShieldCheck, Leaf, RotateCcw, Loader } from "lucide-react";
 
 // ── Scenario content ──────────────────────────────────────────────────────────
 // reduction: fraction of p_base removed when this step is checked (summed, capped at 0.80)
@@ -279,6 +279,30 @@ export default function ExplainabilityDashboard({
 
   const isResimulating = simState === "loading";
 
+  // Debounce ref — auto-resimulate 600ms after the last checkbox change
+  const resimTimer = useRef(null);
+  useEffect(() => () => clearTimeout(resimTimer.current), []);
+
+  const handleToggle = (i) => {
+    // Compute the new set synchronously so we can calculate the factor before state updates
+    const newChecked = new Set(checkedSteps);
+    newChecked.has(i) ? newChecked.delete(i) : newChecked.add(i);
+    onStepToggle(i);
+
+    const newFactor = Math.min(
+      steps.reduce((sum, step, idx) => newChecked.has(idx) ? sum + step.reduction : sum, 0),
+      MAX_PREVENTION
+    );
+    clearTimeout(resimTimer.current);
+    resimTimer.current = setTimeout(() => onResimulate(newFactor), 600);
+  };
+
+  const handleReset = () => {
+    clearTimeout(resimTimer.current);
+    onReset();
+    onResimulate(0);
+  };
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 16 }}
@@ -410,7 +434,7 @@ export default function ExplainabilityDashboard({
                   step={step}
                   index={i}
                   checked={checkedSteps.has(i)}
-                  onToggle={() => onStepToggle(i)}
+                  onToggle={() => handleToggle(i)}
                 />
               ))}
             </motion.div>
@@ -454,46 +478,38 @@ export default function ExplainabilityDashboard({
             )}
           </AnimatePresence>
 
-          {/* Resimulate / Reset buttons */}
-          <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+          {/* Status row — auto-sim indicator + Reset */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 10, gap: 8 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--text-muted)" }}>
+              {isResimulating ? (
+                <>
+                  <Loader size={12} style={{ animation: "spin 1s linear infinite", color: "var(--green)" }} />
+                  <span style={{ color: "var(--green)", fontWeight: 600 }}>Simulating…</span>
+                </>
+              ) : anyChecked ? (
+                <span>Auto-simulates on change</span>
+              ) : (
+                <span>Check a procedure to simulate prevention</span>
+              )}
+            </div>
             <button
-              onClick={() => onResimulate(preventionFactor)}
+              onClick={handleReset}
               disabled={!anyChecked || isResimulating}
               style={{
-                flex: 1,
-                display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                padding: "9px 14px",
-                borderRadius: "var(--radius-sm)",
-                border: "none",
-                background: anyChecked && !isResimulating ? "var(--green)" : "var(--bg3)",
-                color: anyChecked && !isResimulating ? "#fff" : "var(--text-muted)",
-                fontSize: 12,
-                fontWeight: 700,
-                cursor: anyChecked && !isResimulating ? "pointer" : "not-allowed",
-                transition: "all 0.15s",
-              }}
-            >
-              <PlayCircle size={14} />
-              {isResimulating ? "Simulating…" : "Resimulate"}
-            </button>
-            <button
-              onClick={onReset}
-              disabled={!anyChecked || isResimulating}
-              style={{
-                display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                padding: "9px 12px",
+                display: "flex", alignItems: "center", gap: 5,
+                padding: "7px 11px",
                 borderRadius: "var(--radius-sm)",
                 border: "1.5px solid var(--border)",
                 background: "var(--bg)",
-                color: anyChecked && !isResimulating ? "var(--text-muted)" : "var(--text-muted)",
-                fontSize: 12,
+                color: "var(--text-muted)",
+                fontSize: 11,
                 fontWeight: 600,
                 cursor: anyChecked && !isResimulating ? "pointer" : "not-allowed",
-                opacity: anyChecked && !isResimulating ? 1 : 0.5,
+                opacity: anyChecked && !isResimulating ? 1 : 0.4,
                 transition: "all 0.15s",
               }}
             >
-              <RotateCcw size={13} />
+              <RotateCcw size={12} />
               Reset
             </button>
           </div>
