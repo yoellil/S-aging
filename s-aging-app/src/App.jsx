@@ -18,7 +18,7 @@ import { saveSimulationLog } from "./profileApi";
 import { supabase } from "./utils/supabase";
 import AuthPage from "./AuthPage";
 import ProfilePage from "./ProfilePage";
-import ExplainabilityDashboard from "./ExplainabilityDashboard";
+import ExplainabilityDashboard, { DiagnosticTipsPanel } from "./ExplainabilityDashboard";
 
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
@@ -2766,6 +2766,19 @@ function SimulationPage({ config, devMode }) {
             </div>
           </div>
         </div>
+
+        {activeTab === "leaf" && (
+          <DiagnosticTipsPanel
+            disease={disease}
+            month={month}
+            simMode="single"
+            timeStep={timeStep}
+            maxStep={Math.max(0, frames.length - 1)}
+            months={months}
+            onSeek={(t) => { setPlaying(false); setTimeStep(t); }}
+            disabled={frames.length === 0}
+          />
+        )}
 
         {activeTab === "field" && (
           <ExplainabilityDashboard

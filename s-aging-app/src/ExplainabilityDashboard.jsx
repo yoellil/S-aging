@@ -204,7 +204,191 @@ function CategoryHeader({ label, color, bg }) {
   );
 }
 
-// ── Main component ────────────────────────────────────────────────────────────
+// ── Read-only tip card (no checkbox) ─────────────────────────────────────────
+function TipCard({ step, index }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3, delay: index * 0.06, ease: [0.16, 1, 0.3, 1] }}
+      style={{
+        display: "flex", gap: 12, padding: "14px 16px",
+        background: "var(--bg)", border: "1.5px solid var(--border)",
+        borderRadius: "var(--radius-md)", marginBottom: 8,
+      }}
+    >
+      <div style={{
+        flexShrink: 0, width: 30, height: 30, borderRadius: 8,
+        background: "var(--green-light)", display: "flex",
+        alignItems: "center", justifyContent: "center", color: "var(--green)",
+      }}>
+        {step.icon}
+      </div>
+      <div>
+        <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", marginBottom: 3 }}>{step.title}</div>
+        <div style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.65 }}>{step.body}</div>
+      </div>
+    </motion.div>
+  );
+}
+
+function MetricBar({ label, value, color }) {
+  return (
+    <div style={{ marginBottom: 10 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, fontSize: 12, fontWeight: 500 }}>
+        <span style={{ color: "var(--text-muted)" }}>{label}</span>
+        <span style={{ color, fontWeight: 700 }}>{value}%</span>
+      </div>
+      <div style={{ height: 6, borderRadius: 99, background: "var(--bg3)", overflow: "hidden" }}>
+        <motion.div
+          style={{ height: "100%", borderRadius: 99, background: color }}
+          animate={{ width: `${value}%` }}
+          transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+        />
+      </div>
+    </div>
+  );
+}
+
+// ── 3D Leaf: read-only diagnostic tips panel ──────────────────────────────────
+export function DiagnosticTipsPanel({ disease, month, simMode, timeStep, maxStep, months, onSeek, disabled }) {
+  const isFW = disease === "fusarium_wilt";
+  const diseaseKey = isFW ? "fusarium" : "sigatoka";
+  const isEarlyOnset = month <= 10;
+  const scenarioKey = `${simMode === "plantation" ? "plantation" : "single"}-${diseaseKey}`;
+  const scenario = SCENARIOS[scenarioKey] ?? SCENARIOS["single-sigatoka"];
+
+  const stateColor = isEarlyOnset ? "var(--teal-400)" : scenario.severity === "critical" ? "var(--red-400)" : "var(--amber-400)";
+  const stateBg    = isEarlyOnset ? "var(--teal-50)"   : scenario.severity === "critical" ? "var(--red-50)"  : "var(--amber-50)";
+  const borderColor = isEarlyOnset ? "var(--teal-100)" : scenario.severity === "critical" ? "var(--red-100)" : "var(--amber-100)";
+
+  const t = Math.max(0, Math.min(1, month / 30));
+  const necrotic = Math.round(100 * Math.pow(t, 1.8));
+  const healthy  = Math.round(100 * Math.pow(1 - t, 1.2));
+  const infected = Math.max(0, 100 - necrotic - healthy);
+
+  const stageLabel  = isEarlyOnset ? "Early Onset — Monitoring" : "Advanced Stage — Active Intervention";
+  const diseaseName = isFW ? "Fusarium Wilt TR4" : "Black Sigatoka";
+  const modeName    = simMode === "plantation" ? "Plantation (2D Field)" : "Single Plant (3D Leaf)";
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
+      style={{ marginTop: 20 }}
+    >
+      {/* Section header */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+        <div style={{
+          width: 28, height: 28, borderRadius: 8,
+          background: "linear-gradient(135deg, var(--green-50), var(--teal-50))",
+          border: "1.5px solid var(--green-100)",
+          display: "flex", alignItems: "center", justifyContent: "center", color: "var(--green)",
+        }}>
+          <FlaskConical size={14} />
+        </div>
+        <div>
+          <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>Diagnostic &amp; Management Tips</span>
+          <span style={{
+            marginLeft: 8, fontSize: 11, color: "var(--text-muted)",
+            background: "var(--bg2)", border: "1px solid var(--border)",
+            borderRadius: 99, padding: "1px 8px",
+          }}>
+            {diseaseName} · {modeName} · Month {month}
+          </span>
+        </div>
+      </div>
+
+      {/* Time slider */}
+      <div style={{
+        background: "var(--bg2)", border: "1.5px solid var(--border)",
+        borderRadius: "var(--radius-md)", padding: "12px 16px", marginBottom: 14,
+      }}>
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--text-muted)", marginBottom: 6 }}>
+          <span>Month 0</span>
+          <strong style={{ color: "var(--text)" }}>Month {month}</strong>
+          <span>Month {months}</span>
+        </div>
+        <input
+          type="range" className="time-slider"
+          min={0} max={maxStep} step={1}
+          value={Math.min(timeStep, maxStep)}
+          disabled={disabled}
+          onChange={e => onSeek(+e.target.value)}
+          style={{ width: "100%" }}
+        />
+      </div>
+
+      <div className="explain-grid">
+        {/* Metrics */}
+        <div style={{
+          background: "var(--bg2)", border: "1.5px solid var(--border)",
+          borderRadius: "var(--radius-md)", padding: "16px",
+        }}>
+          <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--text-muted)", marginBottom: 14 }}>
+            Health estimate
+          </div>
+          <MetricBar label="Healthy"  value={healthy}  color="#639922" />
+          <MetricBar label="Infected" value={infected} color="#BA7517" />
+          <MetricBar label="Necrotic" value={necrotic} color="#E24B4A" />
+          <div style={{
+            marginTop: 14, padding: "10px 12px", background: stateBg,
+            borderRadius: "var(--radius-sm)", borderLeft: `3px solid ${stateColor}`,
+          }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: stateColor, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              {isEarlyOnset ? "Early Onset" : "Advanced Stage"}
+            </div>
+            <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
+              Month {month} · {necrotic}% necrosis
+            </div>
+          </div>
+        </div>
+
+        {/* Tips */}
+        <div style={{
+          background: "var(--bg2)", border: `1.5px solid ${borderColor}`,
+          borderRadius: "var(--radius-md)", padding: "16px",
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+            <span style={{
+              padding: "3px 10px", borderRadius: 99, background: stateBg,
+              color: stateColor, fontSize: 10, fontWeight: 700,
+              letterSpacing: "0.05em", textTransform: "uppercase",
+            }}>
+              {stageLabel}
+            </span>
+          </div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text)", marginBottom: 10 }}>
+            {isEarlyOnset ? "General Early Intervention Protocol" : scenario.label}
+          </div>
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={isEarlyOnset ? "early" : scenarioKey}
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              transition={{ duration: 0.18 }}
+            >
+              {(isEarlyOnset ? EARLY_TIPS : scenario.steps).map((step, i) => (
+                <TipCard key={i} step={step} index={i} />
+              ))}
+            </motion.div>
+          </AnimatePresence>
+          {!isEarlyOnset && (
+            <div style={{
+              padding: "9px 12px", background: "var(--bg3)",
+              borderRadius: "var(--radius-sm)", fontSize: 11,
+              color: "var(--text-muted)", lineHeight: 1.6,
+            }}>
+              <strong style={{ color: "var(--text)" }}>Note:</strong> Recommendations are generated from S-Aging simulation outputs and validated agronomic literature. Consult a licensed plant pathologist before implementing eradication measures.
+            </div>
+          )}
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+// ── Main component (field checklist) ──────────────────────────────────────────
 export default function ExplainabilityDashboard({
   disease, scenarioKey,
   checkedEarly, onToggleEarly,
