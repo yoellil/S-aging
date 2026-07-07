@@ -2108,8 +2108,9 @@ function SimulationPage({ config, devMode }) {
 
   const [hsvData, setHsvData] = useState(null);
 
-  // Prevention checklist state — keyed by stage context so early/late lists don't bleed
-  const [checkedByStage, setCheckedByStage] = useState({});
+  // Prevention checklist — separate sets for early and late categories
+  const [checkedEarly, setCheckedEarly] = useState(new Set());
+  const [checkedLate,  setCheckedLate]  = useState(new Set());
 
   const isFW = disease === "fusarium_wilt";
   const diseaseName = isFW ? "Fusarium Wilt TR4" : "Black Sigatoka";
@@ -2336,11 +2337,9 @@ function SimulationPage({ config, devMode }) {
   const stats = currentFrame?.stats ?? { infected_pct: 0, necrotic_pct: 0, healthy_pct: 100 };
   const envInfo = currentFrame?.env ?? {};
 
-  // Stage key scopes checklist state so early/late tip lists track independently
   const _simModeKey = activeTab === "leaf" ? "single" : "plantation";
   const _diseaseKey = isFW ? "fusarium" : "sigatoka";
-  const stageKey = month <= 10 ? "early" : `${_simModeKey}-${_diseaseKey}`;
-  const checkedSteps = checkedByStage[stageKey] ?? new Set();
+  const scenarioKey = `${_simModeKey}-${_diseaseKey}`;
 
   const infPct = stats.infected_pct.toFixed(1);
   const necPct = stats.necrotic_pct.toFixed(1);
@@ -2770,21 +2769,13 @@ function SimulationPage({ config, devMode }) {
 
         <ExplainabilityDashboard
           disease={disease}
-          month={month}
-          simMode={activeTab === "leaf" ? "single" : "plantation"}
-          timeStep={timeStep}
-          maxStep={Math.max(0, frames.length - 1)}
-          months={months}
-          onSeek={(t) => { setPlaying(false); setTimeStep(t); }}
-          disabled={frames.length === 0}
-          checkedSteps={checkedSteps}
-          onStepToggle={(i) => setCheckedByStage(prev => {
-            const cur = new Set(prev[stageKey] ?? []);
-            cur.has(i) ? cur.delete(i) : cur.add(i);
-            return { ...prev, [stageKey]: cur };
-          })}
+          scenarioKey={scenarioKey}
+          checkedEarly={checkedEarly}
+          onToggleEarly={(i) => setCheckedEarly(prev => { const n = new Set(prev); n.has(i) ? n.delete(i) : n.add(i); return n; })}
+          checkedLate={checkedLate}
+          onToggleLate={(i) => setCheckedLate(prev => { const n = new Set(prev); n.has(i) ? n.delete(i) : n.add(i); return n; })}
           onResimulate={handleResimulate}
-          onReset={() => setCheckedByStage(prev => ({ ...prev, [stageKey]: new Set() }))}
+          onReset={() => { setCheckedEarly(new Set()); setCheckedLate(new Set()); }}
           simState={simState}
         />
 

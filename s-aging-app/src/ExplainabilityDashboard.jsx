@@ -3,7 +3,6 @@ import { motion, AnimatePresence } from "motion/react";
 import { FlaskConical, AlertTriangle, ShieldCheck, Leaf, RotateCcw, Loader, PlayCircle } from "lucide-react";
 
 // ── Scenario content ──────────────────────────────────────────────────────────
-// reduction: fraction of p_base removed when this step is checked (summed, capped at 0.80)
 const EARLY_TIPS = [
   {
     icon: <ShieldCheck size={16} />,
@@ -124,40 +123,22 @@ const SCENARIOS = {
   },
 };
 
-// ── Sub-components ────────────────────────────────────────────────────────────
-function MetricBar({ label, value, color }) {
-  return (
-    <div style={{ marginBottom: 10 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, fontSize: 12, fontWeight: 500 }}>
-        <span style={{ color: "var(--text-muted)" }}>{label}</span>
-        <span style={{ color, fontWeight: 700 }}>{value}%</span>
-      </div>
-      <div style={{ height: 6, borderRadius: 99, background: "var(--bg3)", overflow: "hidden" }}>
-        <motion.div
-          style={{ height: "100%", borderRadius: 99, background: color }}
-          animate={{ width: `${value}%` }}
-          transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-        />
-      </div>
-    </div>
-  );
-}
-
+// ── ChecklistItem ─────────────────────────────────────────────────────────────
 function ChecklistItem({ step, index, checked, onToggle }) {
   return (
     <motion.div
-      initial={{ opacity: 0, y: 10 }}
+      initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3, delay: index * 0.06, ease: [0.16, 1, 0.3, 1] }}
+      transition={{ duration: 0.25, delay: index * 0.05, ease: [0.16, 1, 0.3, 1] }}
       onClick={onToggle}
       style={{
         display: "flex",
         gap: 12,
-        padding: "12px 14px",
-        background: checked ? "var(--green-light, rgba(99,153,34,0.08))" : "var(--bg)",
+        padding: "11px 14px",
+        background: checked ? "rgba(99,153,34,0.08)" : "var(--bg)",
         border: `1.5px solid ${checked ? "var(--green)" : "var(--border)"}`,
         borderRadius: "var(--radius-md)",
-        marginBottom: 8,
+        marginBottom: 6,
         cursor: "pointer",
         transition: "background 0.15s, border-color 0.15s",
         userSelect: "none",
@@ -165,35 +146,25 @@ function ChecklistItem({ step, index, checked, onToggle }) {
     >
       {/* Checkbox */}
       <div style={{
-        flexShrink: 0,
-        width: 20,
-        height: 20,
-        marginTop: 2,
-        borderRadius: 5,
+        flexShrink: 0, width: 18, height: 18, marginTop: 3,
+        borderRadius: 4,
         border: `2px solid ${checked ? "var(--green)" : "var(--border)"}`,
         background: checked ? "var(--green)" : "transparent",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
+        display: "flex", alignItems: "center", justifyContent: "center",
         transition: "all 0.15s",
       }}>
         {checked && (
-          <svg width="11" height="9" viewBox="0 0 11 9" fill="none">
-            <path d="M1 4L4 7.5L10 1" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+          <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
+            <path d="M1 3.5L3.5 6.5L9 1" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
         )}
       </div>
 
       {/* Icon */}
       <div style={{
-        flexShrink: 0,
-        width: 28,
-        height: 28,
-        borderRadius: 7,
-        background: checked ? "var(--green-light, rgba(99,153,34,0.12))" : "var(--bg2)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
+        flexShrink: 0, width: 26, height: 26, borderRadius: 6,
+        background: checked ? "rgba(99,153,34,0.12)" : "var(--bg2)",
+        display: "flex", alignItems: "center", justifyContent: "center",
         color: checked ? "var(--green)" : "var(--text-muted)",
         transition: "all 0.15s",
       }}>
@@ -201,82 +172,56 @@ function ChecklistItem({ step, index, checked, onToggle }) {
       </div>
 
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
-          <span style={{
-            fontSize: 13,
-            fontWeight: 700,
-            color: checked ? "var(--green)" : "var(--text)",
-            textDecoration: checked ? "none" : "none",
-            transition: "color 0.15s",
-          }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 2 }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: checked ? "var(--green)" : "var(--text)", transition: "color 0.15s" }}>
             {step.title}
           </span>
           <span style={{
-            fontSize: 10,
-            fontWeight: 700,
-            padding: "1px 6px",
-            borderRadius: 99,
+            fontSize: 10, fontWeight: 700, padding: "1px 6px", borderRadius: 99,
             background: checked ? "var(--green)" : "var(--bg3)",
             color: checked ? "#fff" : "var(--text-muted)",
-            transition: "all 0.15s",
-            whiteSpace: "nowrap",
+            transition: "all 0.15s", whiteSpace: "nowrap",
           }}>
             −{Math.round(step.reduction * 100)}% spread
           </span>
         </div>
-        <div style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.65 }}>{step.body}</div>
+        <div style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.6 }}>{step.body}</div>
       </div>
     </motion.div>
   );
 }
 
+// ── Section header ────────────────────────────────────────────────────────────
+function CategoryHeader({ label, color, bg }) {
+  return (
+    <div style={{
+      fontSize: 10, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase",
+      color, background: bg, borderRadius: 99, padding: "3px 10px",
+      display: "inline-block", marginBottom: 10,
+    }}>
+      {label}
+    </div>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 export default function ExplainabilityDashboard({
-  disease, month, simMode, timeStep, maxStep, months, onSeek, disabled,
-  checkedSteps, onStepToggle, onResimulate, onReset, simState,
+  disease, scenarioKey,
+  checkedEarly, onToggleEarly,
+  checkedLate,  onToggleLate,
+  onResimulate, onReset, simState,
 }) {
   const isFW = disease === "fusarium_wilt";
-  const diseaseKey = isFW ? "fusarium" : "sigatoka";
+  const scenario = SCENARIOS[scenarioKey] ?? SCENARIOS["single-sigatoka"];
+  const isCritical = scenario.severity === "critical";
 
-  const isEarlyOnset = month <= 10;
-
-  const scenarioKey = useMemo(() => {
-    const mode = simMode === "plantation" ? "plantation" : "single";
-    return `${mode}-${diseaseKey}`;
-  }, [simMode, diseaseKey]);
-
-  const scenario = SCENARIOS[scenarioKey];
-  const steps = isEarlyOnset ? EARLY_TIPS : scenario.steps;
-
-  const stateColor = isEarlyOnset
-    ? "var(--teal-400)"
-    : scenario.severity === "critical" ? "var(--red-400)" : "var(--amber-400)";
-  const stateBg = isEarlyOnset
-    ? "var(--teal-50)"
-    : scenario.severity === "critical" ? "var(--red-50)" : "var(--amber-50)";
-  const borderColor = isEarlyOnset
-    ? "var(--teal-100)"
-    : scenario.severity === "critical" ? "var(--red-100)" : "var(--amber-100)";
-
-  // Derive display metrics from actual sim month (non-linear curves)
-  const t = Math.max(0, Math.min(1, month / 30));
-  const necrotic = Math.round(100 * Math.pow(t, 1.8));
-  const healthy  = Math.round(100 * Math.pow(1 - t, 1.2));
-  const infected = Math.max(0, 100 - necrotic - healthy);
-
-  const stageLabel = isEarlyOnset ? "Early Onset — Monitoring" : "Advanced Stage — Active Intervention";
-  const diseaseName = isFW ? "Fusarium Wilt TR4" : "Black Sigatoka";
-  const modeName = simMode === "plantation" ? "Plantation (2D Field)" : "Single Plant (3D Leaf)";
-
-  // Compute total prevention factor from checked steps (capped at 90%)
   const MAX_PREVENTION = 0.90;
-  const rawReduction = steps.reduce((sum, step, i) => {
-    return checkedSteps.has(i) ? sum + step.reduction : sum;
-  }, 0);
+  const earlyReduction = EARLY_TIPS.reduce((s, step, i) => checkedEarly.has(i) ? s + step.reduction : s, 0);
+  const lateReduction  = scenario.steps.reduce((s, step, i) => checkedLate.has(i)  ? s + step.reduction  : s, 0);
+  const rawReduction   = earlyReduction + lateReduction;
   const preventionFactor = Math.min(rawReduction, MAX_PREVENTION);
-  const preventionPct = Math.round(preventionFactor * 100);
-  const anyChecked = checkedSteps.size > 0;
-
+  const preventionPct    = Math.round(preventionFactor * 100);
+  const anyChecked = checkedEarly.size > 0 || checkedLate.size > 0;
   const isResimulating = simState === "loading";
 
   const handleReset = () => {
@@ -292,7 +237,7 @@ export default function ExplainabilityDashboard({
       style={{ marginTop: 20 }}
     >
       {/* Section header */}
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
         <div style={{
           width: 28, height: 28, borderRadius: 8,
           background: "linear-gradient(135deg, var(--green-50), var(--teal-50))",
@@ -302,219 +247,125 @@ export default function ExplainabilityDashboard({
         }}>
           <FlaskConical size={14} />
         </div>
-        <div>
-          <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>Diagnostic &amp; Management Tips</span>
-          <span className="explain-header-badge" style={{
-            marginLeft: 8, fontSize: 11, color: "var(--text-muted)",
-            background: "var(--bg2)", border: "1px solid var(--border)",
-            borderRadius: 99, padding: "1px 8px",
-          }}>
-            {diseaseName} · {modeName} · Month {month}
-          </span>
-        </div>
+        <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>
+          Diagnostic &amp; Management — Prevention Checklist
+        </span>
       </div>
 
-      {/* Duplicate time slider — same state as the main viewer slider */}
       <div style={{
         background: "var(--bg2)",
-        border: "1.5px solid var(--border)",
+        border: `1.5px solid ${anyChecked ? "var(--green)" : "var(--border)"}`,
         borderRadius: "var(--radius-md)",
-        padding: "12px 16px",
-        marginBottom: 14,
+        padding: "18px",
+        transition: "border-color 0.2s",
       }}>
-        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--text-muted)", marginBottom: 6 }}>
-          <span>Month 0</span>
-          <strong style={{ color: "var(--text)" }}>Month {month}</strong>
-          <span>Month {months}</span>
+
+        {/* ── Early Prevention ── */}
+        <CategoryHeader label="Early Prevention" color="var(--teal-400, #2dd4bf)" bg="var(--teal-50, rgba(45,212,191,0.10))" />
+        <div style={{ marginBottom: 18 }}>
+          {EARLY_TIPS.map((step, i) => (
+            <ChecklistItem
+              key={i} step={step} index={i}
+              checked={checkedEarly.has(i)}
+              onToggle={() => onToggleEarly(i)}
+            />
+          ))}
         </div>
-        <input
-          type="range"
-          className="time-slider"
-          min={0}
-          max={maxStep}
-          step={1}
-          value={Math.min(timeStep, maxStep)}
-          disabled={disabled}
-          onChange={e => onSeek(+e.target.value)}
-          style={{ width: "100%" }}
+
+        {/* ── Late Stage Prevention ── */}
+        <CategoryHeader
+          label={isCritical ? "Late Stage — Critical Intervention" : "Late Stage — Active Intervention"}
+          color={isCritical ? "var(--red-400, #f87171)" : "var(--amber-400, #fbbf24)"}
+          bg={isCritical ? "rgba(248,113,113,0.10)" : "rgba(251,191,36,0.10)"}
         />
-      </div>
-
-      <div className="explain-grid">
-
-        {/* Metrics panel */}
-        <div style={{
-          background: "var(--bg2)",
-          border: "1.5px solid var(--border)",
-          borderRadius: "var(--radius-md)",
-          padding: "16px",
-        }}>
-          <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--text-muted)", marginBottom: 14 }}>
-            Health estimate
-          </div>
-          <MetricBar label="Healthy"  value={healthy}  color="#639922" />
-          <MetricBar label="Infected" value={infected} color="#BA7517" />
-          <MetricBar label="Necrotic" value={necrotic} color="#E24B4A" />
-          <div style={{
-            marginTop: 14,
-            padding: "10px 12px",
-            background: stateBg,
-            borderRadius: "var(--radius-sm)",
-            borderLeft: `3px solid ${stateColor}`,
-          }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: stateColor, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-              {isEarlyOnset ? "Early Onset" : "Advanced Stage"}
-            </div>
-            <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
-              Month {month} · {necrotic}% necrosis
-            </div>
-          </div>
+        <div style={{ marginBottom: 4, fontSize: 11, fontWeight: 600, color: "var(--text-muted)", marginTop: -4, marginBottom: 10 }}>
+          {scenario.label}
+        </div>
+        <div style={{ marginBottom: 14 }}>
+          {scenario.steps.map((step, i) => (
+            <ChecklistItem
+              key={i} step={step} index={i}
+              checked={checkedLate.has(i)}
+              onToggle={() => onToggleLate(i)}
+            />
+          ))}
         </div>
 
-        {/* Prevention Checklist card */}
-        <div style={{
-          background: "var(--bg2)",
-          border: `1.5px solid ${anyChecked ? "var(--green)" : borderColor}`,
-          borderRadius: "var(--radius-md)",
-          padding: "16px",
-          transition: "border-color 0.2s",
-        }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-            <span style={{
-              padding: "3px 10px",
-              borderRadius: 99,
-              background: stateBg,
-              color: stateColor,
-              fontSize: 10,
-              fontWeight: 700,
-              letterSpacing: "0.05em",
-              textTransform: "uppercase",
-            }}>
-              {stageLabel}
-            </span>
-            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-              Prevention Checklist
-            </span>
-          </div>
-
-          <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text)", marginBottom: 10 }}>
-            {isEarlyOnset ? "General Early Intervention Protocol" : scenario.label}
-          </div>
-
-          <AnimatePresence mode="wait">
+        {/* ── Prevention Impact ── */}
+        <AnimatePresence>
+          {anyChecked && (
             <motion.div
-              key={isEarlyOnset ? "early" : scenarioKey}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.18 }}
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.2 }}
+              style={{
+                overflow: "hidden",
+                background: "linear-gradient(135deg, rgba(99,153,34,0.10), rgba(34,113,34,0.06))",
+                border: "1.5px solid var(--green)",
+                borderRadius: "var(--radius-sm)",
+                padding: "10px 14px",
+                marginBottom: 12,
+              }}
             >
-              {steps.map((step, i) => (
-                <ChecklistItem
-                  key={i}
-                  step={step}
-                  index={i}
-                  checked={checkedSteps.has(i)}
-                  onToggle={() => onStepToggle(i)}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: "var(--green)" }}>Estimated spread reduction</span>
+                <span style={{ fontSize: 15, fontWeight: 800, color: "var(--green)" }}>−{preventionPct}%</span>
+              </div>
+              <div style={{ height: 6, borderRadius: 99, background: "var(--bg3)", overflow: "hidden" }}>
+                <motion.div
+                  animate={{ width: `${(preventionPct / 90) * 100}%` }}
+                  transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+                  style={{ height: "100%", borderRadius: 99, background: "var(--green)" }}
                 />
-              ))}
+              </div>
+              <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 5 }}>
+                Max 90% · {rawReduction > MAX_PREVENTION ? "Capped at 90%" : `${Math.round((MAX_PREVENTION - preventionFactor) * 100)}% remaining`}
+              </div>
             </motion.div>
-          </AnimatePresence>
-
-          {/* Prevention impact banner */}
-          <AnimatePresence>
-            {anyChecked && (
-              <motion.div
-                initial={{ opacity: 0, height: 0, marginTop: 0 }}
-                animate={{ opacity: 1, height: "auto", marginTop: 10 }}
-                exit={{ opacity: 0, height: 0, marginTop: 0 }}
-                transition={{ duration: 0.2 }}
-                style={{
-                  overflow: "hidden",
-                  background: "linear-gradient(135deg, rgba(99,153,34,0.10), rgba(34,113,34,0.06))",
-                  border: "1.5px solid var(--green)",
-                  borderRadius: "var(--radius-sm)",
-                  padding: "10px 12px",
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: "var(--green)" }}>
-                    Estimated spread reduction
-                  </span>
-                  <span style={{ fontSize: 15, fontWeight: 800, color: "var(--green)" }}>
-                    −{preventionPct}%
-                  </span>
-                </div>
-                <div style={{ height: 6, borderRadius: 99, background: "var(--bg3)", overflow: "hidden" }}>
-                  <motion.div
-                    animate={{ width: `${(preventionPct / 80) * 100}%` }}
-                    transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
-                    style={{ height: "100%", borderRadius: 99, background: "var(--green)" }}
-                  />
-                </div>
-                <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 5 }}>
-                  Max prevention: 90% · {rawReduction > MAX_PREVENTION ? "Capped at 90%" : `${Math.round((MAX_PREVENTION - preventionFactor) * 100)}% remaining`}
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          {/* Resimulate / Reset buttons */}
-          <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-            <button
-              onClick={() => onResimulate(preventionFactor)}
-              disabled={!anyChecked || isResimulating}
-              style={{
-                flex: 1,
-                display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                padding: "9px 14px",
-                borderRadius: "var(--radius-sm)",
-                border: "none",
-                background: anyChecked && !isResimulating ? "var(--green)" : "var(--bg3)",
-                color: anyChecked && !isResimulating ? "#fff" : "var(--text-muted)",
-                fontSize: 12, fontWeight: 700,
-                cursor: anyChecked && !isResimulating ? "pointer" : "not-allowed",
-                transition: "all 0.15s",
-              }}
-            >
-              {isResimulating
-                ? <><Loader size={13} style={{ animation: "spin 1s linear infinite" }} /> Simulating…</>
-                : <><PlayCircle size={14} /> Resimulate</>}
-            </button>
-            <button
-              onClick={handleReset}
-              disabled={!anyChecked || isResimulating}
-              style={{
-                display: "flex", alignItems: "center", gap: 5,
-                padding: "9px 12px",
-                borderRadius: "var(--radius-sm)",
-                border: "1.5px solid var(--border)",
-                background: "var(--bg)",
-                color: "var(--text-muted)",
-                fontSize: 12, fontWeight: 600,
-                cursor: anyChecked && !isResimulating ? "pointer" : "not-allowed",
-                opacity: anyChecked && !isResimulating ? 1 : 0.4,
-                transition: "all 0.15s",
-              }}
-            >
-              <RotateCcw size={13} />
-              Reset
-            </button>
-          </div>
-
-          {!isEarlyOnset && (
-            <div style={{
-              marginTop: 10,
-              padding: "9px 12px",
-              background: "var(--bg3)",
-              borderRadius: "var(--radius-sm)",
-              fontSize: 11,
-              color: "var(--text-muted)",
-              lineHeight: 1.6,
-            }}>
-              <strong style={{ color: "var(--text)" }}>Note:</strong> Recommendations are generated from S-Aging simulation outputs and validated agronomic literature. Consult a licensed plant pathologist before implementing eradication measures.
-            </div>
           )}
+        </AnimatePresence>
+
+        {/* ── Buttons ── */}
+        <div style={{ display: "flex", gap: 8 }}>
+          <button
+            onClick={() => onResimulate(preventionFactor)}
+            disabled={!anyChecked || isResimulating}
+            style={{
+              flex: 1,
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+              padding: "10px 14px",
+              borderRadius: "var(--radius-sm)", border: "none",
+              background: anyChecked && !isResimulating ? "var(--green)" : "var(--bg3)",
+              color: anyChecked && !isResimulating ? "#fff" : "var(--text-muted)",
+              fontSize: 12, fontWeight: 700,
+              cursor: anyChecked && !isResimulating ? "pointer" : "not-allowed",
+              transition: "all 0.15s",
+            }}
+          >
+            {isResimulating
+              ? <><Loader size={13} style={{ animation: "spin 1s linear infinite" }} /> Simulating…</>
+              : <><PlayCircle size={14} /> Resimulate</>}
+          </button>
+          <button
+            onClick={handleReset}
+            disabled={!anyChecked || isResimulating}
+            style={{
+              display: "flex", alignItems: "center", gap: 5,
+              padding: "10px 12px",
+              borderRadius: "var(--radius-sm)",
+              border: "1.5px solid var(--border)",
+              background: "var(--bg)",
+              color: "var(--text-muted)",
+              fontSize: 12, fontWeight: 600,
+              cursor: anyChecked && !isResimulating ? "pointer" : "not-allowed",
+              opacity: anyChecked && !isResimulating ? 1 : 0.4,
+              transition: "all 0.15s",
+            }}
+          >
+            <RotateCcw size={13} />
+            Reset
+          </button>
         </div>
       </div>
     </motion.div>
