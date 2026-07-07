@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { FlaskConical, AlertTriangle, ShieldCheck, Leaf, RotateCcw, Loader, PlayCircle } from "lucide-react";
 
@@ -399,7 +399,8 @@ export default function ExplainabilityDashboard({
   const scenario = SCENARIOS[scenarioKey] ?? SCENARIOS["single-sigatoka"];
   const isCritical = scenario.severity === "critical";
 
-  const MAX_PREVENTION = 0.70;
+  const [capPct, setCapPct] = useState(70); // user-selectable max cap (10–90%)
+  const MAX_PREVENTION = capPct / 100;
   const earlyReduction = EARLY_TIPS.reduce((s, step, i) => checkedEarly.has(i) ? s + step.reduction : s, 0);
   const lateReduction  = scenario.steps.reduce((s, step, i) => checkedLate.has(i)  ? s + step.reduction  : s, 0);
   const rawReduction   = earlyReduction + lateReduction;
@@ -498,13 +499,24 @@ export default function ExplainabilityDashboard({
               </div>
               <div style={{ height: 6, borderRadius: 99, background: "var(--bg3)", overflow: "hidden" }}>
                 <motion.div
-                  animate={{ width: `${(preventionPct / 90) * 100}%` }}
+                  animate={{ width: `${(preventionPct / capPct) * 100}%` }}
                   transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
                   style={{ height: "100%", borderRadius: 99, background: "var(--green)" }}
                 />
               </div>
               <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 5 }}>
-                Max 70% · {rawReduction > MAX_PREVENTION ? "Capped at 70%" : `${Math.round((MAX_PREVENTION - preventionFactor) * 100)}% remaining`}
+                Max {capPct}% · {rawReduction > MAX_PREVENTION ? `Capped at ${capPct}%` : `${Math.round((MAX_PREVENTION - preventionFactor) * 100)}% remaining`}
+              </div>
+              {/* Cap slider */}
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
+                <span style={{ fontSize: 10, color: "var(--text-muted)", whiteSpace: "nowrap" }}>Cap:</span>
+                <input
+                  type="range" min={10} max={90} step={10}
+                  value={capPct}
+                  onChange={e => setCapPct(Number(e.target.value))}
+                  style={{ flex: 1, accentColor: "var(--green)", height: 4 }}
+                />
+                <span style={{ fontSize: 11, fontWeight: 700, color: "var(--green)", minWidth: 32, textAlign: "right" }}>{capPct}%</span>
               </div>
             </motion.div>
           )}
