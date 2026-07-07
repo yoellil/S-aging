@@ -451,13 +451,14 @@ function stepFieldGrid(g, disease, env, windAngle, maxRange = 1, durationScale =
   return next;
 }
 
-function computeFieldSnapshots(seededGrid, disease, envFactor, windAngle, maxRange = 1, temp = 27, months = 30, windStrength = 0, cols = FIELD_COLS, rows = FIELD_ROWS) {
+function computeFieldSnapshots(seededGrid, disease, envFactor, windAngle, maxRange = 1, temp = 27, months = 30, windStrength = 0, cols = FIELD_COLS, rows = FIELD_ROWS, preventionFactor = 0) {
   const isFW = disease === "fusarium_wilt";
   const T_MIN = isFW ? 20.0 : 16.6;
   const T_MAX = isFW ? 35.0 : 30.3;
   const outOfRange = temp < T_MIN || temp > T_MAX;
   // Outside viable range = dormant/latent: still spreads, but very slowly
-  const env = outOfRange ? 0.08 : Math.max(0.15, envFactor);
+  const baseEnv = outOfRange ? 0.08 : Math.max(0.15, envFactor);
+  const env = baseEnv * Math.max(0.05, 1 - preventionFactor);
   // Scale spread rate so disease paces across the full duration
   // (calibrated for 30 months — longer durations spread slower per step)
   const durationScale = 30 / Math.max(1, months);
@@ -487,7 +488,7 @@ function fieldSnapshotStats(snap) {
   return { healthy: p(healthy), early: p(early), advanced: p(advanced), hi: p(hi) };
 }
 
-function FieldView({ disease, timeStep, envFactor, temp, months, onStatsUpdate, playing, onPlayPause, onRerun }) {
+function FieldView({ disease, timeStep, envFactor, temp, months, onStatsUpdate, playing, onPlayPause, onRerun, preventionFactor = 0 }) {
   const ref = useRef(null);
   const animRef = useRef(null);
   const snapsRef = useRef(null);
@@ -497,6 +498,7 @@ function FieldView({ disease, timeStep, envFactor, temp, months, onStatsUpdate, 
   const envRef = useRef(envFactor);
   const tempRef = useRef(temp);
   const monthsRef = useRef(months);
+  const preventionRef = useRef(preventionFactor);
   const densityRef = useRef(0.75);
   const maxRangeRef = useRef(1);
   const windStrengthRef = useRef(5);
@@ -533,7 +535,7 @@ function FieldView({ disease, timeStep, envFactor, temp, months, onStatsUpdate, 
         const hit = seeds.some(({ cx, cy }) => Math.abs(r - cy) <= 2 && Math.abs(c - cx) <= 2);
         return hit && cell.hasPlant ? { ...cell, state: 1, age: 0 } : { ...cell };
       }));
-      const snaps = computeFieldSnapshots(seeded, diseaseRef.current, envRef.current, angle, maxRangeRef.current, tempRef.current, monthsRef.current, windStrengthRef.current, fieldColsRef.current, fieldRowsRef.current);
+      const snaps = computeFieldSnapshots(seeded, diseaseRef.current, envRef.current, angle, maxRangeRef.current, tempRef.current, monthsRef.current, windStrengthRef.current, fieldColsRef.current, fieldRowsRef.current, preventionRef.current);
       snapsRef.current = snaps;
       displayRef.current = snaps[Math.min(timeStepRef.current, snaps.length - 1)];
       onStatsUpdate?.(snaps.map(fieldSnapshotStats));
@@ -553,6 +555,11 @@ function FieldView({ disease, timeStep, envFactor, temp, months, onStatsUpdate, 
   }, [rebuild]);
 
   useEffect(() => { doReset(density, pattern); }, [disease, density, pattern, doReset]);
+
+  useEffect(() => {
+    preventionRef.current = preventionFactor;
+    if (baseGridRef.current) rebuild(baseGridRef.current, seedsRef.current, windAngle.current);
+  }, [preventionFactor, rebuild]);
 
   useEffect(() => {
     if (!snapsRef.current) return;
@@ -2111,6 +2118,7 @@ function SimulationPage({ config, devMode }) {
   // Prevention checklist — separate sets for early and late categories
   const [checkedEarly, setCheckedEarly] = useState(new Set());
   const [checkedLate,  setCheckedLate]  = useState(new Set());
+  const [appliedPreventionFactor, setAppliedPreventionFactor] = useState(0);
 
   const isFW = disease === "fusarium_wilt";
   const diseaseName = isFW ? "Fusarium Wilt TR4" : "Black Sigatoka";
@@ -2138,6 +2146,7 @@ function SimulationPage({ config, devMode }) {
   }, [disease, temp, rh, density, detections, maskGrid, imgWidth, imgHeight, imageData]);
 
   const handleResimulate = useCallback((preventionFactor) => {
+    setAppliedPreventionFactor(preventionFactor);
     cancelledRef.current = true;
     clearInterval(playRef.current);
     setTimeout(() => {
@@ -2488,6 +2497,7 @@ function SimulationPage({ config, devMode }) {
                     playing={playing}
                     onPlayPause={handlePlayPause}
                     onRerun={handleRerun}
+                    preventionFactor={appliedPreventionFactor}
                   />
                 )}
               </div>
@@ -2789,7 +2799,7 @@ function SimulationPage({ config, devMode }) {
             checkedLate={checkedLate}
             onToggleLate={(i) => setCheckedLate(prev => { const n = new Set(prev); n.has(i) ? n.delete(i) : n.add(i); return n; })}
             onResimulate={handleResimulate}
-            onReset={() => { setCheckedEarly(new Set()); setCheckedLate(new Set()); }}
+            onReset={() => { setCheckedEarly(new Set()); setCheckedLate(new Set()); setAppliedPreventionFactor(0); handleResimulate(0); }}
             simState={simState}
           />
         )}
