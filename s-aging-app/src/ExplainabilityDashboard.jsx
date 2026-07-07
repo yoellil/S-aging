@@ -9,19 +9,19 @@ const EARLY_TIPS = [
     icon: <ShieldCheck size={16} />,
     title: "Clean Your Tools",
     body: "Early signs of disease have been detected. Before moving to the next plant, wipe all cutting tools with rubbing alcohol (isopropyl alcohol, 70%) or a bleach-and-water mix (1 part bleach to 9 parts water). This stops the disease from hitching a ride to healthy plants.",
-    reduction: 0.20,
+    reduction: 0.35,
   },
   {
     icon: <Leaf size={16} />,
     title: "Apply a Protective Spray",
     body: "Coat healthy plant parts — especially new leaves and the base of the main stem (pseudostem) — with a protective fungicide such as copper spray or mancozeb. Think of it as sunscreen for the plant: it sits on the surface and blocks disease spores from getting in.",
-    reduction: 0.30,
+    reduction: 0.45,
   },
   {
     icon: <AlertTriangle size={16} />,
     title: "Monitor Weather Conditions",
     body: "Record the daily temperature and air humidity. Disease spreads much faster when humidity stays above 70% (for Black Sigatoka) or above 75% (for Fusarium Wilt TR4). Use these readings as your signal to spray or take action before the disease gets worse.",
-    reduction: 0.10,
+    reduction: 0.20,
   },
 ];
 
@@ -34,19 +34,19 @@ const SCENARIOS = {
         icon: <AlertTriangle size={16} />,
         title: "Kill the Plant at the Source",
         body: "Inject 10 mL of weed killer (glyphosate) directly into the main stem (pseudostem) about 30 cm from the ground. This shuts down the plant's internal water and food channels and stops the underground base (corm) from releasing more disease spores. Mark the spot and do not replant for at least 6 months.",
-        reduction: 0.50,
+        reduction: 0.65,
       },
       {
         icon: <FlaskConical size={16} />,
         title: "Destroy the Plant Where It Stands",
         body: "Once the weed killer has taken effect (wait 48–72 hours), chop the plant down on the spot and cover all the pieces with a thick layer of quicklime (about 15 cm). Do not carry plant parts to another area — digging up the underground base (corm) can scatter long-lasting disease spores (chlamydospores) into clean soil nearby.",
-        reduction: 0.25,
+        reduction: 0.45,
       },
       {
         icon: <ShieldCheck size={16} />,
         title: "Disinfect Tools and Footwear",
         body: "Soak all cutting tools in bleach solution (1 part bleach to 19 parts water) for 30 minutes. Scrub boots with soap, then step through a disinfectant footbath (10% bleach) before leaving the area. Note the exact location on a map and report to the farm manager right away.",
-        reduction: 0.15,
+        reduction: 0.25,
       },
     ],
   },
@@ -58,19 +58,19 @@ const SCENARIOS = {
         icon: <Leaf size={16} />,
         title: "Remove Infected Leaves",
         body: "Find and cut off all leaves with Stage 3 or worse damage — look for dark brown streaks that have merged into large dead (necrotic) patches. Cut at the leaf stalk base (petiole), as close to the main stem (pseudostem) as possible. Always use a clean blade and avoid cutting through the middle of the leaf.",
-        reduction: 0.30,
+        reduction: 0.45,
       },
       {
         icon: <AlertTriangle size={16} />,
         title: "Lay Cut Leaves Face-Down",
         body: "Place the removed leaves upside-down (spore side facing the soil) directly below the plant. This stops disease spores from being picked up by the wind and landing on healthy leaves. Spread them flat — do not stack or pile them up.",
-        reduction: 0.20,
+        reduction: 0.30,
       },
       {
         icon: <FlaskConical size={16} />,
         title: "Spray Remaining Healthy Leaves",
         body: "Apply a deep-acting fungicide (systemic triazole) — such as propiconazole or tebuconazole — to the still-healthy leaves as a leaf spray (foliar spray), mixed at 2 mL per liter of water. On your next spray cycle, switch to a different fungicide type (e.g., strobilurins) so the disease does not become resistant to one product.",
-        reduction: 0.35,
+        reduction: 0.50,
       },
     ],
   },
@@ -82,19 +82,19 @@ const SCENARIOS = {
         icon: <Leaf size={16} />,
         title: "Thin Out Shoots and Leaves",
         body: "Cut off all young side shoots (suckers) that are shorter than 1 meter to open up the space between plants and let air flow through. Keep no more than 3 healthy leaves per plant at a time. Leaf-removal teams should always move in one direction across the rows so they do not carry disease spores back into areas they already cleaned.",
-        reduction: 0.25,
+        reduction: 0.35,
       },
       {
         icon: <FlaskConical size={16} />,
         title: "Rotate Your Fungicide Sprays",
         body: "Follow a 4-spray schedule, always switching between different fungicide types to slow down resistance (following FRAC resistance guidelines): rotate deep-acting fungicide group 3 (DMI), group 11 (strobilurins), and group 7 (SDHI) in turn. Spray in the early morning when wind is calm, and wait at least 21 days between each round of deep-acting sprays.",
-        reduction: 0.40,
+        reduction: 0.55,
       },
       {
         icon: <ShieldCheck size={16} />,
         title: "Feed the Plants to Boost Resistance",
         body: "Mix potassium sulfate (K₂SO₄) at 3 kg per hectare into your regular fungicide spray. Banana plants with high potassium levels are naturally tougher against Black Sigatoka. Also add calcium and boron to your fertilizer routine to help strengthen the outer walls of plant cells.",
-        reduction: 0.20,
+        reduction: 0.30,
       },
     ],
   },
@@ -106,19 +106,19 @@ const SCENARIOS = {
         icon: <AlertTriangle size={16} />,
         title: "Seal Off the Infected Area",
         body: "As soon as disease is confirmed, dig a trench around the outbreak area (10 meters out from the sick plants, 50 cm deep, 30 cm wide) and fill it with quicklime. Put up clear warning signs around the zone. Set up one entry-and-exit cleaning station where all workers and equipment must be disinfected with a bleach footbath before passing through.",
-        reduction: 0.40,
+        reduction: 0.55,
       },
       {
         icon: <FlaskConical size={16} />,
         title: "Treat Nearby Plants with Protective Microbes",
         body: "Water the root zone (rhizosphere) of nearby healthy plants with a solution of a beneficial soil fungus called Trichoderma harzianum — apply about 5 liters per plant. This helpful fungus naturally competes with and blocks the Fusarium disease fungus (Foc TR4) in the soil. Repeat this treatment once a month for 3 months.",
-        reduction: 0.25,
+        reduction: 0.40,
       },
       {
         icon: <ShieldCheck size={16} />,
         title: "Replant with Disease-Resistant Varieties",
         body: "Let the soil rest for at least 12 months before replanting. When you do replant, choose only banana varieties that can resist TR4, such as GCTCV-219, Goldfinger, or wild-cross hybrids (Musa balbisiana). Keep clear records of which areas were replanted so they can be watched closely over time.",
-        reduction: 0.15,
+        reduction: 0.25,
       },
     ],
   },
@@ -268,8 +268,8 @@ export default function ExplainabilityDashboard({
   const diseaseName = isFW ? "Fusarium Wilt TR4" : "Black Sigatoka";
   const modeName = simMode === "plantation" ? "Plantation (2D Field)" : "Single Plant (3D Leaf)";
 
-  // Compute total prevention factor from checked steps (capped at 80%)
-  const MAX_PREVENTION = 0.80;
+  // Compute total prevention factor from checked steps (capped at 90%)
+  const MAX_PREVENTION = 0.90;
   const rawReduction = steps.reduce((sum, step, i) => {
     return checkedSteps.has(i) ? sum + step.reduction : sum;
   }, 0);
@@ -448,7 +448,7 @@ export default function ExplainabilityDashboard({
                   />
                 </div>
                 <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 5 }}>
-                  Max prevention: 80% · {rawReduction > MAX_PREVENTION ? "Capped" : `${Math.round((MAX_PREVENTION - preventionFactor) * 100)}% remaining`}
+                  Max prevention: 90% · {rawReduction > MAX_PREVENTION ? "Capped at 90%" : `${Math.round((MAX_PREVENTION - preventionFactor) * 100)}% remaining`}
                 </div>
               </motion.div>
             )}

@@ -420,8 +420,11 @@ class SCAEngine:
         """
         env = self.compute_env(disease, temp, rh, density)
         is_fw  = env["is_fw"]
-        p_base = env["p_base"] * (1.0 - float(np.clip(prevention_factor, 0.0, 0.95)))
-        e_env  = float(env["E_ENV"])
+        _prev  = float(np.clip(prevention_factor, 0.0, 0.95))
+        # Prevention reduces both the per-step infection probability AND the
+        # environmental driving force (lesion maturation + necrosis rate).
+        p_base = env["p_base"] * (1.0 - _prev)
+        e_env  = float(env["E_ENV"]) * max(0.08, 1.0 - _prev * 0.65)
 
         grid = np.zeros((self.ROWS, self.COLS), dtype=np.uint8)
         intensity = np.zeros((self.ROWS, self.COLS), dtype=np.float32)

@@ -2108,8 +2108,8 @@ function SimulationPage({ config, devMode }) {
 
   const [hsvData, setHsvData] = useState(null);
 
-  // Prevention checklist state
-  const [checkedSteps, setCheckedSteps] = useState(new Set());
+  // Prevention checklist state — keyed by stage context so early/late lists don't bleed
+  const [checkedByStage, setCheckedByStage] = useState({});
 
   const isFW = disease === "fusarium_wilt";
   const diseaseName = isFW ? "Fusarium Wilt TR4" : "Black Sigatoka";
@@ -2158,10 +2158,6 @@ function SimulationPage({ config, devMode }) {
       viewerRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     }, 50);
   }, [disease, temp, rh, density, detections, maskGrid, imgWidth, imgHeight, imageData]);
-
-  const handleResetChecklist = useCallback(() => {
-    setCheckedSteps(new Set());
-  }, []);
 
   const handlePlayPause = useCallback(() => {
     setPlaying(p => {
@@ -2339,6 +2335,12 @@ function SimulationPage({ config, devMode }) {
   const month = currentFrame?.month ?? 0;
   const stats = currentFrame?.stats ?? { infected_pct: 0, necrotic_pct: 0, healthy_pct: 100 };
   const envInfo = currentFrame?.env ?? {};
+
+  // Stage key scopes checklist state so early/late tip lists track independently
+  const _simModeKey = activeTab === "leaf" ? "single" : "plantation";
+  const _diseaseKey = isFW ? "fusarium" : "sigatoka";
+  const stageKey = month <= 10 ? "early" : `${_simModeKey}-${_diseaseKey}`;
+  const checkedSteps = checkedByStage[stageKey] ?? new Set();
 
   const infPct = stats.infected_pct.toFixed(1);
   const necPct = stats.necrotic_pct.toFixed(1);
@@ -2776,13 +2778,13 @@ function SimulationPage({ config, devMode }) {
           onSeek={(t) => { setPlaying(false); setTimeStep(t); }}
           disabled={frames.length === 0}
           checkedSteps={checkedSteps}
-          onStepToggle={(i) => setCheckedSteps(prev => {
-            const next = new Set(prev);
-            next.has(i) ? next.delete(i) : next.add(i);
-            return next;
+          onStepToggle={(i) => setCheckedByStage(prev => {
+            const cur = new Set(prev[stageKey] ?? []);
+            cur.has(i) ? cur.delete(i) : cur.add(i);
+            return { ...prev, [stageKey]: cur };
           })}
           onResimulate={handleResimulate}
-          onReset={handleResetChecklist}
+          onReset={() => setCheckedByStage(prev => ({ ...prev, [stageKey]: new Set() }))}
           simState={simState}
         />
 
