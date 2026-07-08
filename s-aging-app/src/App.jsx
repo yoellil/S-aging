@@ -2708,14 +2708,14 @@ function SimulationPage({ config, devMode }) {
 
             {/* Simulation parameters + env factors */}
             <div className="env-display">
-              <div className="env-display-title">Simulation parameters</div>
+              <div className="env-display-title" style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <span>Simulation parameters</span>
+                <SimParamsInfo isFW={isFW} />
+              </div>
               {[
                 { label: "Temperature", val: `${temp}°C  (optimal: ${T_OPT}°C)` },
                 { label: "Relative humidity", val: `${rh}%  (spreads at ≥${RH_MIN}%)` },
                 { label: "Plant density", val: density },
-                { label: "Spread pattern", val: isFW ? "Soil-to-root (Fusarium Wilt)" : "Airborne spores (Black Sigatoka)" },
-                { label: "Spread reach", val: "Each plant affects up to 8 neighbours" },
-                { label: "Engine", val: "Python simulation + 3D renderer" },
               ].map(({ label, val }) => (
                 <div className="env-row" key={label}>
                   <span className="env-row-label">{label}</span>
@@ -3191,6 +3191,43 @@ function AboutPage({ setDevMode }) {
           pointerEvents: "none",
         }}>
           {toast}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Simulation parameters info tooltip ────────────────────────────────────────
+function SimParamsInfo({ isFW }) {
+  const [open, setOpen] = useState(false);
+  const entries = [
+    { term: "Temperature factor", def: `How well the current temperature supports spread. Peaks at the optimal (${isFW ? "27.5" : "27.2"}°C) and drops to near zero outside the viable range.` },
+    { term: "Humidity factor", def: `How much the current humidity accelerates spread. Falls to zero below the onset threshold (${isFW ? "75" : "70"}% RH) — disease needs moisture to propagate.` },
+    { term: "Spread risk score", def: "Temperature factor × Humidity factor. 0 = environment is not supporting spread, 1.0 = ideal conditions for rapid spread." },
+    { term: "Infection probability", def: "The per-step chance that disease jumps from an infected plant to a healthy neighbour. Derived from the spread risk score and disease type." },
+    { term: isFW ? "How Fusarium Wilt spreads" : "How Black Sigatoka spreads", def: isFW ? "Spreads through soil-to-root contact — infected soil can remain dangerous for decades. The simulation checks the 8 surrounding plants (up, down, left, right, and diagonals) at every time step." : "Spreads via airborne spores carried by wind from plant to plant. The simulation checks the 8 surrounding plants (up, down, left, right, and diagonals) at every time step, with wind direction biasing the spread." },
+    { term: "Simulation engine", def: "Built on a Stochastic Cellular Automaton (SCA) — a grid-based model where each plant has a random chance of becoming infected based on its neighbours and the current environment. The 3D leaf view is rendered using PyVista." },
+  ];
+  return (
+    <div style={{ position: "relative" }} onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}>
+      <div style={{
+        width: 16, height: 16, borderRadius: "50%", cursor: "help",
+        background: "var(--border)", display: "flex", alignItems: "center", justifyContent: "center",
+        fontSize: 10, fontWeight: 800, color: "var(--text-muted)", userSelect: "none",
+      }}>?</div>
+      {open && (
+        <div style={{
+          position: "absolute", right: 0, top: "calc(100% + 8px)", width: 290, zIndex: 200,
+          background: "var(--bg2)", border: "1.5px solid var(--border)", borderRadius: 10,
+          padding: "12px 14px", boxShadow: "0 8px 28px rgba(0,0,0,0.30)",
+        }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text)", marginBottom: 10 }}>How the simulation works</div>
+          {entries.map(({ term, def }) => (
+            <div key={term} style={{ marginBottom: 9 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--green)" }}>{term}</div>
+              <div style={{ fontSize: 10.5, color: "var(--text-muted)", lineHeight: 1.55, marginTop: 2 }}>{def}</div>
+            </div>
+          ))}
         </div>
       )}
     </div>
