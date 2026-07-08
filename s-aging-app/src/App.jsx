@@ -2710,12 +2710,12 @@ function SimulationPage({ config, devMode }) {
             <div className="env-display">
               <div className="env-display-title">Simulation parameters</div>
               {[
-                { label: "Temperature", val: `${temp}°C  (T_opt ${T_OPT}°C)` },
-                { label: "Relative humidity", val: `${rh}%  (onset ≥${RH_MIN}%)` },
+                { label: "Temperature", val: `${temp}°C  (optimal: ${T_OPT}°C)` },
+                { label: "Relative humidity", val: `${rh}%  (spreads at ≥${RH_MIN}%)` },
                 { label: "Plant density", val: density },
-                { label: "Disease model", val: isFW ? "Marginal-lateral spread (FW)" : "σ-β Longitudinal (BS)" },
-                { label: "Neighbourhood", val: "Moore 8-cell" },
-                { label: "Engine", val: "Python SCA + PyVista" },
+                { label: "Spread pattern", val: isFW ? "Soil-to-root (Fusarium Wilt)" : "Airborne spores (Black Sigatoka)" },
+                { label: "Spread reach", val: "Each plant affects up to 8 neighbours" },
+                { label: "Engine", val: "Python simulation + 3D renderer" },
               ].map(({ label, val }) => (
                 <div className="env-row" key={label}>
                   <span className="env-row-label">{label}</span>
@@ -2724,10 +2724,10 @@ function SimulationPage({ config, devMode }) {
               ))}
               <div style={{ height: 1, background: "var(--border)", margin: "6px 0" }} />
               {[
-                { label: `CT  [β-poly, Topt=${T_OPT}°C]`, val: CT.toFixed(3) },
-                { label: `CRH [onset ≥${RH_MIN}% RH]`, val: CRH.toFixed(3) },
-                { label: "E_ENV = CT × CRH", val: E_ENV.toFixed(3), hi: true },
-                { label: "p_base (scaled)", val: pBase.toFixed(5) },
+                { label: "Temperature factor", val: CT.toFixed(3) },
+                { label: "Humidity factor", val: CRH.toFixed(3) },
+                { label: "Spread risk score", val: E_ENV.toFixed(3), hi: true },
+                { label: "Infection probability", val: pBase.toFixed(5) },
               ].map(({ label, val, hi }) => (
                 <div className="env-row" key={label}>
                   <span className="env-row-label">{label}</span>
